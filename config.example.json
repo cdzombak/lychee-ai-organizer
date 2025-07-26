@@ -1,0 +1,21 @@
+{
+  "database": {
+    "host": "localhost",
+    "port": 3306,
+    "username": "lychee_user",
+    "password": "your_password_here",
+    "database": "lychee"
+  },
+  "ollama": {
+    "endpoint": "http://localhost:11434",
+    "image_analysis_model": "llava:7b",
+    "description_synthesis_model": "llama3.1:8b"
+  },
+  "server": {
+    "host": "localhost",
+    "port": 8080
+  },
+  "lychee": {
+    "base_url": "https://pictures.dzombak.com"
+  }
+}

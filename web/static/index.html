@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Photo Organizer</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .app {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .album-suggestions {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+            background-color: #2a2a2a;
+        }
+
+        .album-button {
+            flex: 1;
+            max-width: 300px;
+            padding: 20px;
+            background-color: #3a3a3a;
+            border: 2px solid #555;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .album-button:hover {
+            background-color: #4a4a4a;
+            border-color: #777;
+        }
+
+        .album-button h3 {
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .album-button p {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .photo-display {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background-color: #1a1a1a;
+        }
+
+        .photo-container {
+            max-width: 80%;
+            max-height: 80%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .photo-container img {
+            max-width: 100%;
+            max-height: 70vh;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .photo-info {
+            margin-top: 15px;
+            text-align: center;
+            max-width: 600px;
+        }
+
+        .photo-info h2 {
+            margin-bottom: 8px;
+            font-size: 20px;
+        }
+
+        .photo-info .meta {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-bottom: 10px;
+        }
+
+        .photo-info .description {
+            font-size: 16px;
+            line-height: 1.4;
+        }
+
+        .nav-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(0,0,0,0.7);
+            border: none;
+            color: white;
+            font-size: 24px;
+            padding: 15px 20px;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: background-color 0.3s ease;
+        }
+
+        .nav-button:hover {
+            background-color: rgba(0,0,0,0.9);
+        }
+
+        .nav-button.prev {
+            left: 20px;
+        }
+
+        .nav-button.next {
+            right: 20px;
+        }
+
+        .filmstrip {
+            height: 120px;
+            background-color: #2a2a2a;
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            overflow-x: auto;
+            gap: 10px;
+        }
+
+        .filmstrip::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .filmstrip::-webkit-scrollbar-track {
+            background-color: #1a1a1a;
+        }
+
+        .filmstrip::-webkit-scrollbar-thumb {
+            background-color: #555;
+            border-radius: 4px;
+        }
+
+        .thumbnail {
+            height: 100px;
+            width: 100px;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .thumbnail:hover {
+            transform: scale(1.05);
+        }
+
+        .thumbnail.active {
+            border-color: #4CAF50;
+        }
+
+        .rescan-button {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s ease;
+        }
+
+        .rescan-button:hover {
+            background-color: #45a049;
+        }
+
+        .progress-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .progress-content {
+            background-color: #2a2a2a;
+            padding: 40px;
+            border-radius: 10px;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #1a1a1a;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #4CAF50;
+            transition: width 0.3s ease;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+        }
+
+        .no-photos {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        function App() {
+            const [photos, setPhotos] = useState([]);
+            const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+            const [suggestions, setSuggestions] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [progress, setProgress] = useState(null);
+            const [ws, setWs] = useState(null);
+
+            const currentPhoto = photos[currentPhotoIndex];
+
+            useEffect(() => {
+                loadPhotos();
+                initWebSocket();
+            }, []);
+
+            useEffect(() => {
+                if (currentPhoto) {
+                    loadSuggestions(currentPhoto.id);
+                }
+            }, [currentPhoto]);
+
+            const initWebSocket = () => {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws`;
+                const websocket = new WebSocket(wsUrl);
+
+                websocket.onmessage = (event) => {
+                    const message = JSON.parse(event.data);
+                    
+                    switch (message.type) {
+                        case 'progress':
+                            setProgress(message.payload);
+                            break;
+                        case 'complete':
+                            setProgress(null);
+                            loadPhotos();
+                            break;
+                        case 'error':
+                            console.error('WebSocket error:', message.payload.error);
+                            setProgress(null);
+                            break;
+                    }
+                };
+
+                setWs(websocket);
+            };
+
+            const loadPhotos = async () => {
+                try {
+                    const response = await fetch('/api/photos/unsorted');
+                    const data = await response.json();
+                    setPhotos(data || []);
+                    setLoading(false);
+                } catch (error) {
+                    console.error('Error loading photos:', error);
+                    setLoading(false);
+                }
+            };
+
+            const loadSuggestions = async (photoId) => {
+                try {
+                    const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`);
+                    const data = await response.json();
+                    setSuggestions(data.albums || []);
+                } catch (error) {
+                    console.error('Error loading suggestions:', error);
+                    setSuggestions([]);
+                }
+            };
+
+            const movePhoto = async (albumId) => {
+                if (!currentPhoto) return;
+
+                try {
+                    await fetch('/api/photos/move', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            photo_id: currentPhoto.id,
+                            album_id: albumId,
+                        }),
+                    });
+
+                    // Remove photo from list and advance to next
+                    const newPhotos = photos.filter(p => p.id !== currentPhoto.id);
+                    setPhotos(newPhotos);
+                    
+                    if (currentPhotoIndex >= newPhotos.length) {
+                        setCurrentPhotoIndex(Math.max(0, newPhotos.length - 1));
+                    }
+                } catch (error) {
+                    console.error('Error moving photo:', error);
+                }
+            };
+
+            const nextPhoto = () => {
+                if (currentPhotoIndex < photos.length - 1) {
+                    setCurrentPhotoIndex(currentPhotoIndex + 1);
+                }
+            };
+
+            const prevPhoto = () => {
+                if (currentPhotoIndex > 0) {
+                    setCurrentPhotoIndex(currentPhotoIndex - 1);
+                }
+            };
+
+            const startRescan = () => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'start_rescan' }));
+                }
+            };
+
+            if (progress) {
+                const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
+                
+                return (
+                    <div className="progress-overlay">
+                        <div className="progress-content">
+                            <h2>Processing AI Descriptions</h2>
+                            <p>{progress.description}</p>
+                            <div className="progress-bar">
+                                <div className="progress-fill" style={{width: `${progressPercent}%`}}></div>
+                            </div>
+                            <p>{progress.current} of {progress.total} items processed</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (loading) {
+                return <div className="loading">Loading photos...</div>;
+            }
+
+            if (photos.length === 0) {
+                return <div className="no-photos">No unsorted photos found!</div>;
+            }
+
+            return (
+                <div className="app">
+                    <div className="main-content">
+                        <div className="album-suggestions">
+                            {suggestions.map((album, index) => (
+                                <button 
+                                    key={album.id} 
+                                    className="album-button"
+                                    onClick={() => movePhoto(album.id)}
+                                >
+                                    <h3>{album.name}</h3>
+                                    <p>{album.description || 'No description available'}</p>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="photo-display">
+                            {currentPhoto && (
+                                <>
+                                    <div className="photo-container">
+                                        <img 
+                                            src={currentPhoto.thumbnail} 
+                                            alt={currentPhoto.title}
+                                        />
+                                        <div className="photo-info">
+                                            <h2>{currentPhoto.title}</h2>
+                                            <div className="meta">Taken: {currentPhoto.taken_at}</div>
+                                            <div className="description">{currentPhoto.description}</div>
+                                        </div>
+                                    </div>
+
+                                    <button 
+                                        className="nav-button prev" 
+                                        onClick={prevPhoto}
+                                        disabled={currentPhotoIndex === 0}
+                                    >
+                                        ‹
+                                    </button>
+                                    <button 
+                                        className="nav-button next" 
+                                        onClick={nextPhoto}
+                                        disabled={currentPhotoIndex === photos.length - 1}
+                                    >
+                                        ›
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="filmstrip">
+                        {photos.map((photo, index) => (
+                            <img
+                                key={photo.id}
+                                src={photo.thumbnail}
+                                alt={photo.title}
+                                className={`thumbnail ${index === currentPhotoIndex ? 'active' : ''}`}
+                                onClick={() => setCurrentPhotoIndex(index)}
+                            />
+                        ))}
+                    </div>
+
+                    <button className="rescan-button" onClick={startRescan}>
+                        Rescan
+                    </button>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
