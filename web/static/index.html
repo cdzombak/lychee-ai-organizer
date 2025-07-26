@@ -89,21 +89,22 @@
 
         .photo-container img {
             max-width: 100%;
-            max-height: 60vh;
+            max-height: calc(100vh - 280px); /* Account for album suggestions (~80px), photo info (60px), rescan button (~40px), filmstrip (100px) */
+            min-height: 200px; /* Minimum photo size */
             object-fit: contain;
             border-radius: 8px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         }
 
         .photo-info {
-            margin-top: 15px;
+            margin-top: 10px;
             text-align: center;
             max-width: 600px;
-            height: 120px;
-            overflow-y: auto;
+            height: 60px;
             display: flex;
             flex-direction: column;
-            justify-content: flex-start;
+            justify-content: center;
+            flex-shrink: 0;
         }
 
         .photo-info h2 {
@@ -149,14 +150,15 @@
         }
 
         .filmstrip {
-            height: 120px;
+            height: 100px;
             background-color: #2a2a2a;
             display: flex;
             align-items: center;
-            padding: 10px;
+            padding: 8px;
             overflow-x: auto;
             overflow-y: hidden;
-            gap: 10px;
+            gap: 8px;
+            flex-shrink: 0;
         }
 
         .filmstrip::-webkit-scrollbar {
@@ -173,13 +175,14 @@
         }
 
         .thumbnail {
-            height: 100px;
-            width: 100px;
+            height: 80px;
+            width: 80px;
             object-fit: cover;
             border-radius: 4px;
             cursor: pointer;
             transition: all 0.3s ease;
             border: 2px solid transparent;
+            flex-shrink: 0;
         }
 
         .thumbnail:hover {
@@ -448,7 +451,6 @@
                                         <div className="photo-info">
                                             <h2>{currentPhoto.title}</h2>
                                             <div className="meta">Taken: {currentPhoto.taken_at}</div>
-                                            <div className="description">{currentPhoto.description}</div>
                                         </div>
                                     </div>
 
