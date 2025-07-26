@@ -94,3 +94,34 @@ func (f *Fetcher) GetImageBase64(variant *database.SizeVariant) (string, string,
 	base64Data := base64.StdEncoding.EncodeToString(imageData)
 	return base64Data, mimeType, nil
 }
+
+func (f *Fetcher) ConstructImageURL(variant *database.SizeVariant) string {
+	// Construct the full URL for the image
+	// The short_path format varies by variant type:
+	// - Medium variants: "17/bc/ede2998bb6238e38debbede5dc6c.jpeg" 
+	// - Thumbnail variants: "thumb/72/9f/6ac4c28108f1b276a8cc45e99141.jpeg"
+	// - Original variants: "original/bc/76/cf76569f88279d64fc47b12a96db.jpg"
+	
+	if variant.Type == database.SizeVariantOriginal {
+		// For original variants, short_path already contains "original/" prefix
+		return fmt.Sprintf("%s/uploads/big/%s", f.baseURL, variant.ShortPath)
+	} else if variant.Type == 6 && strings.HasPrefix(variant.ShortPath, "thumb/") {
+		// For thumbnails where short_path already includes "thumb/" prefix
+		return fmt.Sprintf("%s/uploads/%s", f.baseURL, variant.ShortPath)
+	} else if variant.Type == database.SizeVariantMedium && strings.HasPrefix(variant.ShortPath, "medium/") {
+		// For medium variants where short_path already includes "medium/" prefix
+		return fmt.Sprintf("%s/uploads/%s", f.baseURL, variant.ShortPath)
+	} else {
+		// For other variants, use the size directory
+		var sizeDir string
+		switch variant.Type {
+		case database.SizeVariantMedium:
+			sizeDir = "medium"
+		case 6: // Thumbnail type
+			sizeDir = "thumb"
+		default:
+			sizeDir = "medium" // Default fallback
+		}
+		return fmt.Sprintf("%s/uploads/%s/%s", f.baseURL, sizeDir, variant.ShortPath)
+	}
+}

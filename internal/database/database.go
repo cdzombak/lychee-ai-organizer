@@ -32,6 +32,10 @@ func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
+func (db *DB) GetDB() *sql.DB {
+	return db.conn
+}
+
 func (db *DB) GetUnsortedPhotos() ([]Photo, error) {
 	query := `
 		SELECT id, created_at, updated_at, owner_id, old_album_id, title, description, 

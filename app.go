@@ -70,7 +70,7 @@ func (app *App) Run() error {
 	app.cache = cacheClient
 
 	// Initialize API server
-	app.apiServer = api.NewServer(db, ollamaClient, cacheClient)
+	app.apiServer = api.NewServer(db, ollamaClient, cacheClient, imageFetcher)
 
 	// Initialize WebSocket handler
 	app.wsHandler = websocket.NewHandler(db, ollamaClient)

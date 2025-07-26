@@ -308,12 +308,26 @@
 
             const loadPhotos = async () => {
                 try {
+                    console.log('Fetching photos from:', window.location.origin + '/api/photos/unsorted');
                     const response = await fetch('/api/photos/unsorted');
+                    console.log('Response status:', response.status);
+                    console.log('Response headers:', response.headers);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
                     const data = await response.json();
+                    console.log('Photos data:', data);
                     setPhotos(data || []);
                     setLoading(false);
                 } catch (error) {
                     console.error('Error loading photos:', error);
+                    console.error('Error details:', {
+                        message: error.message,
+                        stack: error.stack,
+                        name: error.name
+                    });
                     setLoading(false);
                 }
             };
@@ -420,8 +434,9 @@
                                 <>
                                     <div className="photo-container">
                                         <img 
-                                            src={currentPhoto.thumbnail} 
+                                            src={currentPhoto.full_size} 
                                             alt={currentPhoto.title}
+                                            loading="lazy"
                                         />
                                         <div className="photo-info">
                                             <h2>{currentPhoto.title}</h2>
