@@ -62,15 +62,15 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleRescan(conn *websocket.Conn) {
-	// Get photos without AI descriptions
+	// Get photos without AI descriptions (only process photos that don't have descriptions)
 	photos, err := h.db.GetPhotosWithoutAIDescription()
 	if err != nil {
 		h.sendError(conn, "Failed to get photos: "+err.Error())
 		return
 	}
 
-	// Get albums without AI descriptions
-	albums, err := h.db.GetAlbumsWithoutAIDescription()
+	// Get ALL top-level albums (rescan regenerates all album descriptions)
+	albums, err := h.db.GetTopLevelAlbums()
 	if err != nil {
 		h.sendError(conn, "Failed to get albums: "+err.Error())
 		return
@@ -78,7 +78,7 @@ func (h *Handler) handleRescan(conn *websocket.Conn) {
 
 	totalWork := len(photos) + len(albums)
 	if totalWork == 0 {
-		h.sendMessage(conn, "complete", map[string]string{"message": "No work needed - all descriptions are up to date"})
+		h.sendMessage(conn, "complete", map[string]string{"message": "No photos or albums to process"})
 		return
 	}
 
@@ -101,10 +101,10 @@ func (h *Handler) handleRescan(conn *websocket.Conn) {
 		}
 	}
 
-	// Process albums
+	// Process albums (regenerate all album descriptions)
 	for _, album := range albums {
 		current++
-		h.sendProgress(conn, "albums", current, totalWork, "Processing album: "+album.ID)
+		h.sendProgress(conn, "albums", current, totalWork, "Regenerating album description: "+album.ID)
 
 		albumPhotos, err := h.db.GetPhotosInAlbum(album.ID)
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -26,18 +27,27 @@ func NewFetcher(cfg *config.LycheeConfig) *Fetcher {
 
 func (f *Fetcher) GetImageBytes(variant *database.SizeVariant) ([]byte, string, error) {
 	// Construct the full URL for the image
-	// Based on the example: "https://pictures.dzombak.com/uploads/medium/17/bc/ede2998bb6238e38debbede5dc6c.jpeg"
-	var sizeDir string
-	switch variant.Type {
-	case database.SizeVariantOriginal:
-		sizeDir = "big"  // Original images are typically in "big" directory
-	case database.SizeVariantMedium:
-		sizeDir = "medium"
-	default:
-		sizeDir = "big"  // Fallback to original
+	// The short_path format varies by variant type:
+	// - Medium/Small variants: "17/bc/ede2998bb6238e38debbede5dc6c.jpeg" 
+	// - Original variants: "original/bc/76/cf76569f88279d64fc47b12a96db.jpg"
+	
+	var imageURL string
+	if variant.Type == database.SizeVariantOriginal {
+		// For original variants, short_path already contains "original/" prefix
+		imageURL = fmt.Sprintf("%s/uploads/big/%s", f.baseURL, variant.ShortPath)
+	} else {
+		// For other variants (medium, etc.), use the size directory
+		var sizeDir string
+		switch variant.Type {
+		case database.SizeVariantMedium:
+			sizeDir = "medium"
+		default:
+			sizeDir = "medium" // Default fallback
+		}
+		imageURL = fmt.Sprintf("%s/uploads/%s/%s", f.baseURL, sizeDir, variant.ShortPath)
 	}
 	
-	imageURL := fmt.Sprintf("%s/uploads/%s/%s", f.baseURL, sizeDir, variant.ShortPath)
+	log.Printf("Fetching image from URL: %s (variant type: %d, short_path: %s)", imageURL, variant.Type, variant.ShortPath)
 	
 	// Fetch the image
 	resp, err := f.client.Get(imageURL)

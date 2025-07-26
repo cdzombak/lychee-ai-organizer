@@ -102,8 +102,12 @@ func (c *Client) GenerateAlbumDescription(album *database.Album, photos []databa
 		if photo.AIDescription.Valid {
 			photoDescriptions = append(photoDescriptions, photo.AIDescription.String)
 		}
+		
+		// Use taken_at if available, otherwise fall back to created_at
 		if photo.TakenAt.Valid {
 			dates = append(dates, photo.TakenAt.Time.Format("2006-01-02"))
+		} else {
+			dates = append(dates, photo.CreatedAt.Format("2006-01-02"))
 		}
 	}
 
@@ -142,7 +146,17 @@ Provide only the summary paragraph, no additional text.`,
 		return "", err
 	}
 
-	return strings.TrimSpace(response.String()), nil
+	generatedDescription := strings.TrimSpace(response.String())
+	
+	// Append date range information
+	if len(dates) > 0 {
+		minDate := getMinDate(dates)
+		maxDate := getMaxDate(dates)
+		dateRangeText := fmt.Sprintf(" The album contains photos from dates %s to %s.", minDate, maxDate)
+		generatedDescription += dateRangeText
+	}
+
+	return generatedDescription, nil
 }
 
 func (c *Client) GenerateAlbumSuggestions(photo *database.Photo, albums []database.Album) ([]string, error) {
@@ -164,16 +178,27 @@ func (c *Client) GenerateAlbumSuggestions(photo *database.Photo, albums []databa
 		return nil, fmt.Errorf("photo has no AI description")
 	}
 
+	// Get photo date (use taken_at if available, otherwise fall back to created_at)
+	var photoDate string
+	if photo.TakenAt.Valid {
+		photoDate = photo.TakenAt.Time.Format("2006-01-02")
+	} else {
+		photoDate = photo.CreatedAt.Format("2006-01-02")
+	}
+
 	prompt := fmt.Sprintf(`Given this photo description:
 %s
+
+Photo date: %s
 
 And these available albums:
 %s
 
-Suggest the top 3 most appropriate albums for this photo. Consider thematic similarity, subject matter, and context.
+Suggest the top 3 most appropriate albums for this photo. Consider thematic similarity, subject matter, context, and temporal relevance (how well the photo's date fits with other photos in each album).
 
 Respond with only the 3 Album IDs, one per line, in order of best match first.`,
 		photoDesc,
+		photoDate,
 		strings.Join(albumDescs, "\n"))
 
 	req := &api.GenerateRequest{

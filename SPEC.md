@@ -20,13 +20,14 @@ The application will be a self-contained Golang binary with an embedded React si
 *   **Album Description Generation:** For each top-level photo album without an AI-generated description, the application will generate a one-paragraph summary.
     *   This summary will be synthesized from the descriptions of all the photos contained within that album.
     *   The summary will also include a synopsis of the capture dates of the photos in the album.
+    *   After the generated description, the text "The album contains photos from dates X to Y." will be appended, where X and Y are calculated based on the `taken_at` field for each photo, or the `created_at` timestamp for photos where `taken_at` is null.
 *   **Storage of Descriptions:** Generated descriptions for both photos and albums will be stored in the database in two nullable columns: `_ai_description` (TEXT) and `_ai_description_ts` (TIMESTAMP).
-*   **Description Regeneration:** The application will not regenerate a description for a photo that already has one. Album descriptions will only be regenerated upon user request via the "Rescan" button.
+*   **Description Regeneration:** The application will not regenerate a description for a photo that already has one. Album descriptions will be regenerated for all top-level albums when the user clicks the "Rescan" button.
 
 #### 2.2. Intelligent Photo Sorting
 
 *   **Album Suggestions:** After all photos and top-level albums have descriptions, the application will generate album suggestions for each unsorted photo.
-*   **Suggestion Mechanism:** To generate suggestions, the application will query the Ollama endpoint, providing it with the description of the unsorted photo and the descriptions of all top-level albums. The prompt will instruct Ollama to suggest the top three most likely albums for the photo.
+*   **Suggestion Mechanism:** To generate suggestions, the application will query the Ollama endpoint, providing it with the description of the unsorted photo, the photo's date (`taken_at` or `created_at` if `taken_at` is null), and the descriptions of all top-level albums. The prompt will instruct Ollama to consider thematic similarity, subject matter, context, and temporal relevance when suggesting the top three most likely albums for the photo.
 *   **Suggestion Caching:** These album suggestions will be stored in a local cache file to avoid redundant generation on subsequent application runs. The path to this cache file will be configurable.
 
 ### 3. User Interface (UI)
@@ -38,7 +39,9 @@ The application will feature a single-page React UI with the following component
 *   **Album Suggestions:** Three large, prominent buttons will be displayed at the top of the screen, each representing a suggested album for the currently displayed photo.
 *   **Sorting Action:** Clicking on an album suggestion will move the photo to that album. The photo will then be removed from the unsorted filmstrip, and the UI will automatically advance to the next unsorted photo.
 *   **Navigation:** "Next" and "Previous" buttons will be positioned on the right and left sides of the main photo display, allowing the user to skip to the next or previous unsorted photo without sorting.
-*   **Rescan Functionality:** A "Rescan" button will be located in the bottom-left corner of the UI. When clicked, the application will initiate a scan for any photos or top-level albums that do not have an AI-generated description and generate them as needed.
+*   **Rescan Functionality:** A "Rescan" button will be located in the bottom-left corner of the UI. When clicked, the application will:
+    *   Generate descriptions for any photos that do not have an AI-generated description
+    *   Regenerate descriptions for all top-level albums (regardless of whether they already have descriptions)
 *   **Real-time Progress Updates:** While the initial description generation is in progress, the UI will display a real-time updating list of the remaining work. This will be the only interactive element on the screen until the analysis is complete. This real-time communication will be handled using WebSockets.
 
 ### 4. Technical Specifications
