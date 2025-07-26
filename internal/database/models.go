@@ -45,6 +45,7 @@ type Photo struct {
 
 type Album struct {
 	ID                     string         `db:"id"`
+	Title                  string         `db:"title"`
 	ParentID               sql.NullString `db:"parent_id"`
 	License                string         `db:"license"`
 	AlbumThumbAspectRatio  sql.NullString `db:"album_thumb_aspect_ratio"`

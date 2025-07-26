@@ -6,7 +6,8 @@
       "WebFetch(domain:k33g.hashnode.dev)",
       "Bash(go build:*)",
       "Bash(go mod:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

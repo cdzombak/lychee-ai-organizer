@@ -79,12 +79,13 @@ func (db *DB) GetUnsortedPhotos() ([]Photo, error) {
 
 func (db *DB) GetTopLevelAlbums() ([]Album, error) {
 	query := `
-		SELECT id, parent_id, license, album_thumb_aspect_ratio, album_timeline,
-		       album_sorting_col, album_sorting_order, cover_id, header_id,
-		       track_short_path, _lft, _rgt, _ai_description, _ai_description_ts
-		FROM albums 
-		WHERE parent_id IS NULL
-		ORDER BY _lft`
+		SELECT a.id, ba.title, a.parent_id, a.license, a.album_thumb_aspect_ratio, a.album_timeline,
+		       a.album_sorting_col, a.album_sorting_order, a.cover_id, a.header_id,
+		       a.track_short_path, a._lft, a._rgt, a._ai_description, a._ai_description_ts
+		FROM albums a
+		JOIN base_albums ba ON a.id = ba.id
+		WHERE a.parent_id IS NULL
+		ORDER BY a._lft`
 
 	rows, err := db.conn.Query(query)
 	if err != nil {
@@ -96,7 +97,7 @@ func (db *DB) GetTopLevelAlbums() ([]Album, error) {
 	for rows.Next() {
 		var album Album
 		err := rows.Scan(
-			&album.ID, &album.ParentID, &album.License, &album.AlbumThumbAspectRatio,
+			&album.ID, &album.Title, &album.ParentID, &album.License, &album.AlbumThumbAspectRatio,
 			&album.AlbumTimeline, &album.AlbumSortingCol, &album.AlbumSortingOrder,
 			&album.CoverID, &album.HeaderID, &album.TrackShortPath, &album.Lft,
 			&album.Rgt, &album.AIDescription, &album.AIDescriptionTimestamp,
@@ -153,12 +154,13 @@ func (db *DB) GetPhotosWithoutAIDescription() ([]Photo, error) {
 
 func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
 	query := `
-		SELECT id, parent_id, license, album_thumb_aspect_ratio, album_timeline,
-		       album_sorting_col, album_sorting_order, cover_id, header_id,
-		       track_short_path, _lft, _rgt, _ai_description, _ai_description_ts
-		FROM albums 
-		WHERE parent_id IS NULL AND _ai_description IS NULL
-		ORDER BY _lft`
+		SELECT a.id, ba.title, a.parent_id, a.license, a.album_thumb_aspect_ratio, a.album_timeline,
+		       a.album_sorting_col, a.album_sorting_order, a.cover_id, a.header_id,
+		       a.track_short_path, a._lft, a._rgt, a._ai_description, a._ai_description_ts
+		FROM albums a
+		JOIN base_albums ba ON a.id = ba.id
+		WHERE a.parent_id IS NULL AND a._ai_description IS NULL
+		ORDER BY a._lft`
 
 	rows, err := db.conn.Query(query)
 	if err != nil {
@@ -170,7 +172,7 @@ func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
 	for rows.Next() {
 		var album Album
 		err := rows.Scan(
-			&album.ID, &album.ParentID, &album.License, &album.AlbumThumbAspectRatio,
+			&album.ID, &album.Title, &album.ParentID, &album.License, &album.AlbumThumbAspectRatio,
 			&album.AlbumTimeline, &album.AlbumSortingCol, &album.AlbumSortingOrder,
 			&album.CoverID, &album.HeaderID, &album.TrackShortPath, &album.Lft,
 			&album.Rgt, &album.AIDescription, &album.AIDescriptionTimestamp,

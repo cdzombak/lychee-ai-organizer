@@ -160,6 +160,7 @@ func (s *Server) handlePhotoSuggestions(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
+		log.Printf("Found %d top-level albums", len(albums))
 
 		photos, err := s.db.GetUnsortedPhotos()
 		if err != nil {
@@ -177,19 +178,24 @@ func (s *Server) handlePhotoSuggestions(w http.ResponseWriter, r *http.Request) 
 		}
 
 		if targetPhoto == nil {
+			log.Printf("Photo not found in unsorted photos: %s", photoID)
 			http.Error(w, "Photo not found", http.StatusNotFound)
 			return
 		}
 
+		log.Printf("Generating suggestions for photo: %s", photoID)
 		suggestions, err = s.ollama.GenerateAlbumSuggestions(targetPhoto, albums)
 		if err != nil {
 			log.Printf("Error generating suggestions: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
+		log.Printf("Generated %d suggestions: %v", len(suggestions), suggestions)
 
 		s.cache.Set(photoID, suggestions)
 		s.cache.Save()
+	} else {
+		log.Printf("Using cached suggestions for photo %s: %v", photoID, suggestions)
 	}
 
 	albums, err := s.db.GetTopLevelAlbums()
@@ -205,24 +211,35 @@ func (s *Server) handlePhotoSuggestions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var response SuggestionResponse
-	for _, albumID := range suggestions {
-		if album, exists := albumMap[albumID]; exists {
-			desc := ""
-			if album.AIDescription.Valid {
-				desc = album.AIDescription.String
-			}
+	
+	if len(suggestions) == 0 {
+		log.Printf("No suggestions generated for photo %s", photoID)
+		// Return empty response but not null
+		response.Albums = []AlbumResponse{}
+	} else {
+		for _, albumID := range suggestions {
+			if album, exists := albumMap[albumID]; exists {
+				desc := ""
+				if album.AIDescription.Valid {
+					desc = album.AIDescription.String
+				}
 
-			response.Albums = append(response.Albums, AlbumResponse{
-				ID:          album.ID,
-				Name:        album.ID, // Using ID as name for now
-				Description: desc,
-			})
-		}
-		if len(response.Albums) >= 3 {
-			break
+				response.Albums = append(response.Albums, AlbumResponse{
+					ID:          album.ID,
+					Name:        album.Title,
+					Description: desc,
+				})
+				log.Printf("Added album suggestion: %s", album.ID)
+			} else {
+				log.Printf("Album not found in map: %s", albumID)
+			}
+			if len(response.Albums) >= 3 {
+				break
+			}
 		}
 	}
-
+	
+	log.Printf("Returning %d album suggestions", len(response.Albums))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }

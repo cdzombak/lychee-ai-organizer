@@ -3,12 +3,14 @@ package ollama
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"lychee-ai-organizer/internal/config"
 	"lychee-ai-organizer/internal/database"
 	"lychee-ai-organizer/internal/images"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -101,7 +103,12 @@ Provide only the description, no additional text.`,
 		return "", fmt.Errorf("failed to generate photo description after retries: %w", err)
 	}
 
-	return strings.TrimSpace(response.String()), nil
+	description := strings.TrimSpace(response.String())
+	
+	// Remove <think> tags and their contents
+	description = removeThinkTags(description)
+	
+	return description, nil
 }
 
 func (c *Client) GenerateAlbumDescription(album *database.Album, photos []database.Photo) (string, error) {
@@ -166,6 +173,9 @@ Provide only the summary paragraph, no additional text.`,
 
 	generatedDescription := strings.TrimSpace(response.String())
 	
+	// Remove <think> tags and their contents
+	generatedDescription = removeThinkTags(generatedDescription)
+	
 	// Append date range information
 	if len(dates) > 0 {
 		minDate := getMinDate(dates)
@@ -212,9 +222,21 @@ Photo date: %s
 And these available albums:
 %s
 
-Suggest the top 3 most appropriate albums for this photo. Consider thematic similarity, subject matter, context, and temporal relevance (how well the photo's date fits with other photos in each album).
+Analyze this photo and suggest the top 3 most appropriate albums for it. Consider:
+- Thematic similarity (subject matter, content type)
+- Contextual relevance (setting, event type, activity)
+- Temporal relevance (how well the photo's date fits with other photos)
 
-Respond with only the 3 Album IDs, one per line, in order of best match first.`,
+You must respond with valid JSON in exactly this format:
+{
+  "album_ids": ["AlbumID1", "AlbumID2", "AlbumID3"]
+}
+
+Rules:
+- Use only Album IDs that appear in the available albums list above
+- Return exactly 3 Album IDs in order of best match first
+- Respond with only the JSON object, no other text
+- The "album_ids" field must contain an array of strings`,
 		photoDesc,
 		photoDate,
 		strings.Join(albumDescs, "\n"))
@@ -223,6 +245,7 @@ Respond with only the 3 Album IDs, one per line, in order of best match first.`,
 		Model:  c.synthModel,
 		Prompt: prompt,
 		Stream: &[]bool{false}[0],
+		Format: "json",
 	}
 
 	ctx := context.Background()
@@ -244,19 +267,50 @@ Respond with only the 3 Album IDs, one per line, in order of best match first.`,
 		return nil, fmt.Errorf("failed to generate album suggestions after retries: %w", err)
 	}
 
-	lines := strings.Split(strings.TrimSpace(response.String()), "\n")
+	// Parse JSON response
+	var jsonResponse struct {
+		AlbumIDs []string `json:"album_ids"`
+	}
+	
+	responseText := strings.TrimSpace(response.String())
+	if err := json.Unmarshal([]byte(responseText), &jsonResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %w, response was: %s", err, responseText)
+	}
+	
+	// Create a set of valid album IDs for validation
+	validAlbumIDs := make(map[string]bool)
+	for _, album := range albums {
+		validAlbumIDs[album.ID] = true
+	}
+	
+	// Filter and validate album IDs
 	var suggestions []string
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			suggestions = append(suggestions, line)
-		}
-		if len(suggestions) >= 3 {
-			break
+	for _, albumID := range jsonResponse.AlbumIDs {
+		if validAlbumIDs[albumID] {
+			suggestions = append(suggestions, albumID)
+			if len(suggestions) >= 3 {
+				break
+			}
 		}
 	}
 
 	return suggestions, nil
+}
+
+// removeThinkTags removes <think> tags and their contents from text
+func removeThinkTags(text string) string {
+	// Remove <think>...</think> blocks (including multiline)
+	re := regexp.MustCompile(`(?s)<think>.*?</think>`)
+	cleaned := re.ReplaceAllString(text, "")
+	
+	// Also remove standalone <think> tags without closing tags
+	re2 := regexp.MustCompile(`<think>.*`)
+	cleaned = re2.ReplaceAllString(cleaned, "")
+	
+	// Clean up extra whitespace
+	cleaned = strings.TrimSpace(cleaned)
+	
+	return cleaned
 }
 
 func formatTakenAt(takenAt sql.NullTime) string {

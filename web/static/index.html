@@ -45,7 +45,7 @@
         .album-button {
             flex: 1;
             max-width: 300px;
-            padding: 20px;
+            padding: 15px 20px;
             background-color: #3a3a3a;
             border: 2px solid #555;
             border-radius: 8px;
@@ -60,13 +60,8 @@
         }
 
         .album-button h3 {
-            margin-bottom: 10px;
+            margin: 0;
             font-size: 18px;
-        }
-
-        .album-button p {
-            font-size: 14px;
-            opacity: 0.8;
         }
 
         .photo-display {
@@ -89,7 +84,7 @@
 
         .photo-container img {
             max-width: 100%;
-            max-height: calc(100vh - 280px); /* Account for album suggestions (~80px), photo info (60px), rescan button (~40px), filmstrip (100px) */
+            max-height: calc(100vh - 320px); /* Account for album suggestions (~120px), photo info (60px), rescan button (~40px), filmstrip (100px) */
             min-height: 200px; /* Minimum photo size */
             object-fit: contain;
             border-radius: 8px;
@@ -261,6 +256,28 @@
             font-size: 18px;
             opacity: 0.7;
         }
+
+        .suggestions-loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #555;
+            border-top: 3px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -273,6 +290,7 @@
             const [photos, setPhotos] = useState([]);
             const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
             const [suggestions, setSuggestions] = useState([]);
+            const [suggestionsLoading, setSuggestionsLoading] = useState(false);
             const [loading, setLoading] = useState(true);
             const [progress, setProgress] = useState(null);
             const [ws, setWs] = useState(null);
@@ -343,6 +361,8 @@
             };
 
             const loadSuggestions = async (photoId) => {
+                setSuggestionsLoading(true);
+                setSuggestions([]); // Clear previous suggestions immediately
                 try {
                     const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`);
                     const data = await response.json();
@@ -350,6 +370,8 @@
                 } catch (error) {
                     console.error('Error loading suggestions:', error);
                     setSuggestions([]);
+                } finally {
+                    setSuggestionsLoading(false);
                 }
             };
 
@@ -427,16 +449,22 @@
                 <div className="app">
                     <div className="main-content">
                         <div className="album-suggestions">
-                            {suggestions.map((album, index) => (
-                                <button 
-                                    key={album.id} 
-                                    className="album-button"
-                                    onClick={() => movePhoto(album.id)}
-                                >
-                                    <h3>{album.name}</h3>
-                                    <p>{album.description || 'No description available'}</p>
-                                </button>
-                            ))}
+                            {suggestionsLoading ? (
+                                <div className="suggestions-loading">
+                                    <div className="spinner"></div>
+                                    <span>Loading album suggestions...</span>
+                                </div>
+                            ) : (
+                                suggestions.map((album, index) => (
+                                    <button 
+                                        key={album.id} 
+                                        className="album-button"
+                                        onClick={() => movePhoto(album.id)}
+                                    >
+                                        <h3>{album.name}</h3>
+                                    </button>
+                                ))
+                            )}
                         </div>
 
                         <div className="photo-display">
