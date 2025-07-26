@@ -6,14 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"lychee-ai-organizer/internal/config"
-	"lychee-ai-organizer/internal/database"
-	"lychee-ai-organizer/internal/images"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
+
+	"lychee-ai-organizer/internal/config"
+	"lychee-ai-organizer/internal/database"
+	"lychee-ai-organizer/internal/images"
 
 	"github.com/avast/retry-go"
 	"github.com/ollama/ollama/api"
@@ -87,7 +88,7 @@ Provide only the description, no additional text.`,
 
 	ctx := context.Background()
 	var response strings.Builder
-	
+
 	err = retry.Do(
 		func() error {
 			response.Reset() // Clear previous attempts
@@ -105,10 +106,10 @@ Provide only the description, no additional text.`,
 	}
 
 	description := strings.TrimSpace(response.String())
-	
+
 	// Remove <think> tags and their contents
 	description = removeThinkTags(description)
-	
+
 	return description, nil
 }
 
@@ -120,7 +121,7 @@ func (c *Client) GenerateAlbumDescription(album *database.Album, photos []databa
 		if photo.AIDescription.Valid {
 			photoDescriptions = append(photoDescriptions, photo.AIDescription.String)
 		}
-		
+
 		// Use taken_at if available, otherwise fall back to created_at
 		if photo.TakenAt.Valid {
 			dates = append(dates, photo.TakenAt.Time.Format("2006-01-02"))
@@ -140,9 +141,9 @@ Photo descriptions:
 
 Date range: %s to %s
 
-Provide a cohesive summary that synthesizes the common themes, subjects, and mood across these photos. Include information about the time period covered.
+Provide a cohesive summary that synthesizes the common themes, subjects, and mood across these photos.
 
-IMPORTANT: Keep your response to a maximum of 2 sentences. Be concise and focus on the most important aspects.
+IMPORTANT: Keep your response to a maximum of 3 sentences. Be concise and focus on the most important aspects.
 
 Provide only the summary, no additional text.`,
 		strings.Join(photoDescriptions, "\n- "),
@@ -157,7 +158,7 @@ Provide only the summary, no additional text.`,
 
 	ctx := context.Background()
 	var response strings.Builder
-	
+
 	err := retry.Do(
 		func() error {
 			response.Reset() // Clear previous attempts
@@ -175,10 +176,10 @@ Provide only the summary, no additional text.`,
 	}
 
 	generatedDescription := strings.TrimSpace(response.String())
-	
+
 	// Remove <think> tags and their contents
 	generatedDescription = removeThinkTags(generatedDescription)
-	
+
 	// Append date range information
 	if len(dates) > 0 {
 		minDate := getMinDate(dates)
@@ -194,7 +195,7 @@ func (c *Client) GenerateAlbumSuggestions(photo *database.Photo, albums []databa
 	var albumDescs []string
 	for _, album := range albums {
 		if album.AIDescription.Valid {
-			albumDescs = append(albumDescs, fmt.Sprintf("Album ID %s: %s", album.ID, album.AIDescription.String))
+			albumDescs = append(albumDescs, fmt.Sprintf("Album ID %s: \"%s\": %s", album.ID, album.Title, album.AIDescription.String))
 		}
 	}
 
@@ -255,7 +256,7 @@ Rules:
 
 	ctx := context.Background()
 	var response strings.Builder
-	
+
 	err := retry.Do(
 		func() error {
 			response.Reset() // Clear previous attempts
@@ -276,20 +277,20 @@ Rules:
 	var jsonResponse struct {
 		AlbumIDs []string `json:"album_ids"`
 	}
-	
+
 	responseText := strings.TrimSpace(response.String())
 	log.Printf("Album suggestion response for photo %s: %s", photo.ID, responseText)
-	
+
 	if err := json.Unmarshal([]byte(responseText), &jsonResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON response: %w, response was: %s", err, responseText)
 	}
-	
+
 	// Create a set of valid album IDs for validation
 	validAlbumIDs := make(map[string]bool)
 	for _, album := range albums {
 		validAlbumIDs[album.ID] = true
 	}
-	
+
 	// Filter and validate album IDs
 	var suggestions []string
 	for _, albumID := range jsonResponse.AlbumIDs {
@@ -309,14 +310,14 @@ func removeThinkTags(text string) string {
 	// Remove <think>...</think> blocks (including multiline)
 	re := regexp.MustCompile(`(?s)<think>.*?</think>`)
 	cleaned := re.ReplaceAllString(text, "")
-	
+
 	// Also remove standalone <think> tags without closing tags
 	re2 := regexp.MustCompile(`<think>.*`)
 	cleaned = re2.ReplaceAllString(cleaned, "")
-	
+
 	// Clean up extra whitespace
 	cleaned = strings.TrimSpace(cleaned)
-	
+
 	return cleaned
 }
 
