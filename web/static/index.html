@@ -291,6 +291,7 @@
             const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
             const [suggestions, setSuggestions] = useState([]);
             const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+            const [suggestionsCache, setSuggestionsCache] = useState(new Map());
             const [loading, setLoading] = useState(true);
             const [progress, setProgress] = useState(null);
             const [ws, setWs] = useState(null);
@@ -307,6 +308,13 @@
                     loadSuggestions(currentPhoto.id);
                 }
             }, [currentPhoto]);
+
+            // Preload suggestions for visible thumbnails
+            useEffect(() => {
+                if (photos.length > 0) {
+                    preloadVisibleSuggestions();
+                }
+            }, [photos]);
 
             const initWebSocket = () => {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -361,17 +369,58 @@
             };
 
             const loadSuggestions = async (photoId) => {
+                // Check cache first
+                if (suggestionsCache.has(photoId)) {
+                    setSuggestions(suggestionsCache.get(photoId));
+                    return;
+                }
+
                 setSuggestionsLoading(true);
                 setSuggestions([]); // Clear previous suggestions immediately
                 try {
                     const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`);
                     const data = await response.json();
-                    setSuggestions(data.albums || []);
+                    const suggestions = data.albums || [];
+                    
+                    // Cache the suggestions
+                    setSuggestionsCache(prev => new Map(prev).set(photoId, suggestions));
+                    setSuggestions(suggestions);
                 } catch (error) {
                     console.error('Error loading suggestions:', error);
                     setSuggestions([]);
                 } finally {
                     setSuggestionsLoading(false);
+                }
+            };
+
+            const preloadSuggestions = async (photoId) => {
+                // Skip if already cached or loading
+                if (suggestionsCache.has(photoId)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`);
+                    const data = await response.json();
+                    const suggestions = data.albums || [];
+                    
+                    // Cache the suggestions
+                    setSuggestionsCache(prev => new Map(prev).set(photoId, suggestions));
+                } catch (error) {
+                    console.error('Error preloading suggestions for photo', photoId, ':', error);
+                }
+            };
+
+            const preloadVisibleSuggestions = () => {
+                // Get visible thumbnails (simple approach: preload a few around current photo)
+                const startIndex = Math.max(0, currentPhotoIndex - 2);
+                const endIndex = Math.min(photos.length, currentPhotoIndex + 3);
+                
+                for (let i = startIndex; i < endIndex; i++) {
+                    if (photos[i] && !suggestionsCache.has(photos[i].id)) {
+                        // Add small delay to avoid overwhelming the server
+                        setTimeout(() => preloadSuggestions(photos[i].id), (i - startIndex) * 100);
+                    }
                 }
             };
 
@@ -405,12 +454,16 @@
             const nextPhoto = () => {
                 if (currentPhotoIndex < photos.length - 1) {
                     setCurrentPhotoIndex(currentPhotoIndex + 1);
+                    // Trigger preloading for newly visible photos
+                    setTimeout(preloadVisibleSuggestions, 100);
                 }
             };
 
             const prevPhoto = () => {
                 if (currentPhotoIndex > 0) {
                     setCurrentPhotoIndex(currentPhotoIndex - 1);
+                    // Trigger preloading for newly visible photos
+                    setTimeout(preloadVisibleSuggestions, 100);
                 }
             };
 
@@ -512,7 +565,10 @@
                                 src={photo.thumbnail}
                                 alt={photo.title}
                                 className={`thumbnail ${index === currentPhotoIndex ? 'active' : ''}`}
-                                onClick={() => setCurrentPhotoIndex(index)}
+                                onClick={() => {
+                                    setCurrentPhotoIndex(index);
+                                    setTimeout(preloadVisibleSuggestions, 100);
+                                }}
                                 loading="lazy"
                             />
                         ))}

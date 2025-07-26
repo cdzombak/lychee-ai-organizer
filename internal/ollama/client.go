@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"lychee-ai-organizer/internal/config"
 	"lychee-ai-organizer/internal/database"
 	"lychee-ai-organizer/internal/images"
@@ -132,16 +133,18 @@ func (c *Client) GenerateAlbumDescription(album *database.Album, photos []databa
 		return "", fmt.Errorf("no photo descriptions available for album synthesis")
 	}
 
-	prompt := fmt.Sprintf(`Based on the following photo descriptions from an album, create a one-paragraph summary that captures the essence of this photo collection:
+	prompt := fmt.Sprintf(`Based on the following photo descriptions from an album, create a concise summary that captures the essence of this photo collection:
 
 Photo descriptions:
 %s
 
 Date range: %s to %s
 
-Provide a cohesive paragraph that synthesizes the common themes, subjects, and mood across these photos. Include information about the time period covered.
+Provide a cohesive summary that synthesizes the common themes, subjects, and mood across these photos. Include information about the time period covered.
 
-Provide only the summary paragraph, no additional text.`,
+IMPORTANT: Keep your response to a maximum of 2 sentences. Be concise and focus on the most important aspects.
+
+Provide only the summary, no additional text.`,
 		strings.Join(photoDescriptions, "\n- "),
 		getMinDate(dates),
 		getMaxDate(dates))
@@ -241,6 +244,8 @@ Rules:
 		photoDate,
 		strings.Join(albumDescs, "\n"))
 
+	log.Printf("Album suggestion prompt for photo %s:\n%s", photo.ID, prompt)
+
 	req := &api.GenerateRequest{
 		Model:  c.synthModel,
 		Prompt: prompt,
@@ -273,6 +278,8 @@ Rules:
 	}
 	
 	responseText := strings.TrimSpace(response.String())
+	log.Printf("Album suggestion response for photo %s: %s", photo.ID, responseText)
+	
 	if err := json.Unmarshal([]byte(responseText), &jsonResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON response: %w, response was: %s", err, responseText)
 	}
