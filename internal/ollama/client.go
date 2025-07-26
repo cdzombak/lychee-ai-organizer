@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/avast/retry-go"
 	"github.com/ollama/ollama/api"
 )
 
@@ -83,12 +85,20 @@ Provide only the description, no additional text.`,
 	ctx := context.Background()
 	var response strings.Builder
 	
-	err = c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
-		response.WriteString(resp.Response)
-		return nil
-	})
+	err = retry.Do(
+		func() error {
+			response.Reset() // Clear previous attempts
+			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
+				response.WriteString(resp.Response)
+				return nil
+			})
+		},
+		retry.Attempts(3),
+		retry.Delay(time.Second),
+		retry.DelayType(retry.BackOffDelay),
+	)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate photo description after retries: %w", err)
 	}
 
 	return strings.TrimSpace(response.String()), nil
@@ -138,12 +148,20 @@ Provide only the summary paragraph, no additional text.`,
 	ctx := context.Background()
 	var response strings.Builder
 	
-	err := c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
-		response.WriteString(resp.Response)
-		return nil
-	})
+	err := retry.Do(
+		func() error {
+			response.Reset() // Clear previous attempts
+			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
+				response.WriteString(resp.Response)
+				return nil
+			})
+		},
+		retry.Attempts(3),
+		retry.Delay(time.Second),
+		retry.DelayType(retry.BackOffDelay),
+	)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate album description after retries: %w", err)
 	}
 
 	generatedDescription := strings.TrimSpace(response.String())
@@ -210,12 +228,20 @@ Respond with only the 3 Album IDs, one per line, in order of best match first.`,
 	ctx := context.Background()
 	var response strings.Builder
 	
-	err := c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
-		response.WriteString(resp.Response)
-		return nil
-	})
+	err := retry.Do(
+		func() error {
+			response.Reset() // Clear previous attempts
+			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
+				response.WriteString(resp.Response)
+				return nil
+			})
+		},
+		retry.Attempts(3),
+		retry.Delay(time.Second),
+		retry.DelayType(retry.BackOffDelay),
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to generate album suggestions after retries: %w", err)
 	}
 
 	lines := strings.Split(strings.TrimSpace(response.String()), "\n")

@@ -52,6 +52,7 @@ The application will feature a single-page React UI with the following component
 *   **Embedded Web Assets:** The React single-page application's static assets (HTML, CSS, JavaScript) will be embedded within the Go binary using the `go:embed` directive.
 *   **Database Connectivity:** The application will connect to an existing MySQL database using the `go-sql-driver/mysql` driver.
 *   **Ollama Integration:** The application will interact with the user-provided Ollama API endpoint using the official `github.com/ollama/ollama/api` client library.
+    *   **Retry Logic:** All Ollama API calls implement automatic retry logic using the `avast/retry-go` library with up to 3 attempts, starting with a 1-second delay and exponential backoff.
 *   **Configuration:**
     *   Application configuration, including MySQL connection details, Ollama endpoint information (including the models for image analysis and description synthesis), and Lychee base URL, will be provided in a JSON file.
     *   The path to this configuration file will be specified using the `-config` command-line argument.

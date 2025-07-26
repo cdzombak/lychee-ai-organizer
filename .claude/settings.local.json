@@ -4,7 +4,8 @@
       "Bash(mkdir:*)",
       "WebFetch(domain:pkg.go.dev)",
       "WebFetch(domain:k33g.hashnode.dev)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(go mod:*)"
     ],
     "deny": []
   }
