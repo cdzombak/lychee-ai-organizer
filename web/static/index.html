@@ -99,6 +99,11 @@
             margin-top: 15px;
             text-align: center;
             max-width: 600px;
+            height: 120px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
         }
 
         .photo-info h2 {
@@ -150,6 +155,7 @@
             align-items: center;
             padding: 10px;
             overflow-x: auto;
+            overflow-y: hidden;
             gap: 10px;
         }
 
@@ -185,9 +191,9 @@
         }
 
         .rescan-button {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
+            align-self: flex-start;
+            margin-left: 20px;
+            margin-bottom: 10px;
             background-color: #4CAF50;
             color: white;
             border: none;
@@ -465,6 +471,10 @@
                         </div>
                     </div>
 
+                    <button className="rescan-button" onClick={startRescan}>
+                        Rescan
+                    </button>
+
                     <div className="filmstrip">
                         {photos.map((photo, index) => (
                             <img
@@ -477,10 +487,6 @@
                             />
                         ))}
                     </div>
-
-                    <button className="rescan-button" onClick={startRescan}>
-                        Rescan
-                    </button>
                 </div>
             );
         }
