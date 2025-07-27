@@ -27,6 +27,7 @@ type Client struct {
 	synthModel   string
 	db           *database.DB
 	imageFetcher *images.Fetcher
+	config       *config.OllamaConfig
 }
 
 func NewClient(cfg *config.OllamaConfig, db *database.DB, imageFetcher *images.Fetcher) (*Client, error) {
@@ -44,6 +45,7 @@ func NewClient(cfg *config.OllamaConfig, db *database.DB, imageFetcher *images.F
 		synthModel:   cfg.DescriptionSynthesisModel,
 		db:           db,
 		imageFetcher: imageFetcher,
+		config:       cfg,
 	}, nil
 }
 
@@ -83,13 +85,17 @@ Provide only the description, no additional text.`,
 		getStringValue(photo.Model),
 		getStringValue(photo.Location))
 
+	// Build options for the request
+	options := c.buildOllamaOptions()
+	
 	req := &api.GenerateRequest{
-		Model:  c.imageModel,
-		Prompt: prompt,
-		Stream: &[]bool{false}[0],
+		Model:   c.imageModel,
+		Prompt:  prompt,
+		Stream:  &[]bool{false}[0],
 		Images: []api.ImageData{
 			imageBytes,
 		},
+		Options: options,
 	}
 
 	ctx := context.Background()
@@ -119,13 +125,54 @@ Provide only the description, no additional text.`,
 	return description, nil
 }
 
+// buildOllamaOptions creates options map for Ollama API requests
+func (c *Client) buildOllamaOptions() map[string]interface{} {
+	options := make(map[string]interface{})
+	
+	// Set context window if specified
+	if c.config.ContextWindow > 0 {
+		options["num_ctx"] = c.config.ContextWindow
+		log.Printf("Setting Ollama context window to %d", c.config.ContextWindow)
+	}
+	
+	// Set temperature if specified
+	if c.config.Temperature > 0 {
+		options["temperature"] = c.config.Temperature
+		log.Printf("Setting Ollama temperature to %f", c.config.Temperature)
+	}
+	
+	// Set top_p if specified
+	if c.config.TopP > 0 {
+		options["top_p"] = c.config.TopP
+		log.Printf("Setting Ollama top_p to %f", c.config.TopP)
+	}
+	
+	// Add any additional options from config
+	if c.config.Options != nil {
+		for key, value := range c.config.Options {
+			options[key] = value
+			log.Printf("Setting custom Ollama option %s to %v", key, value)
+		}
+	}
+	
+	return options
+}
+
 func (c *Client) GenerateAlbumDescription(album *database.Album, photos []database.Photo) (string, error) {
+	log.Printf("Starting album description generation for album %s (%s) with %d photos", album.ID, album.Title, len(photos))
+	
 	var photoDescriptions []string
 	var dates []string
 
-	for _, photo := range photos {
+	log.Printf("Processing photos for album %s...", album.ID)
+	for i, photo := range photos {
+		log.Printf("Processing photo %d/%d (ID: %s) for album %s", i+1, len(photos), photo.ID, album.ID)
+		
 		if photo.AIDescription.Valid {
 			photoDescriptions = append(photoDescriptions, photo.AIDescription.String)
+			log.Printf("Added AI description for photo %s (length: %d chars)", photo.ID, len(photo.AIDescription.String))
+		} else {
+			log.Printf("Photo %s has no AI description, skipping", photo.ID)
 		}
 
 		// Use taken_at if available, otherwise fall back to created_at
@@ -135,10 +182,18 @@ func (c *Client) GenerateAlbumDescription(album *database.Album, photos []databa
 			dates = append(dates, photo.CreatedAt.Format("2006-01-02"))
 		}
 	}
+	
+	log.Printf("Collected %d photo descriptions and %d dates for album %s", len(photoDescriptions), len(dates), album.ID)
 
 	if len(photoDescriptions) == 0 {
+		log.Printf("No photo descriptions available for album %s synthesis", album.ID)
 		return "", fmt.Errorf("no photo descriptions available for album synthesis")
 	}
+
+	log.Printf("Creating prompt for album %s with %d descriptions", album.ID, len(photoDescriptions))
+	minDate := getMinDate(dates)
+	maxDate := getMaxDate(dates)
+	log.Printf("Date range for album %s: %s to %s", album.ID, minDate, maxDate)
 
 	prompt := fmt.Sprintf(`Based on the following photo descriptions from an album, create a concise summary that captures the essence of this photo collection:
 
@@ -153,22 +208,34 @@ IMPORTANT: Keep your response to a maximum of 3 sentences. Be concise and focus 
 
 Provide only the summary, no additional text.`,
 		strings.Join(photoDescriptions, "\n- "),
-		getMinDate(dates),
-		getMaxDate(dates))
+		minDate,
+		maxDate)
+	
+	log.Printf("Generated prompt for album %s (length: %d chars)", album.ID, len(prompt))
 
+	log.Printf("Creating Ollama request for album %s using model %s", album.ID, c.synthModel)
+	
+	// Build options for the request
+	options := c.buildOllamaOptions()
+	log.Printf("Using Ollama options for album %s: %+v", album.ID, options)
+	
 	req := &api.GenerateRequest{
-		Model:  c.synthModel,
-		Prompt: prompt,
-		Stream: &[]bool{false}[0],
+		Model:   c.synthModel,
+		Prompt:  prompt,
+		Stream:  &[]bool{false}[0],
+		Options: options,
 	}
 
 	ctx := context.Background()
 	var response strings.Builder
 
+	log.Printf("Starting Ollama API call for album %s...", album.ID)
 	err := retry.Do(
 		func() error {
+			log.Printf("Attempting Ollama API call for album %s", album.ID)
 			response.Reset() // Clear previous attempts
 			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
+				log.Printf("Received response chunk for album %s (length: %d)", album.ID, len(resp.Response))
 				response.WriteString(resp.Response)
 				return nil
 			})
@@ -178,13 +245,18 @@ Provide only the summary, no additional text.`,
 		retry.DelayType(retry.BackOffDelay),
 	)
 	if err != nil {
+		log.Printf("Failed to generate album description for album %s after retries: %v", album.ID, err)
 		return "", fmt.Errorf("failed to generate album description after retries: %w", err)
 	}
 
+	log.Printf("Successfully received response from Ollama for album %s", album.ID)
 	generatedDescription := strings.TrimSpace(response.String())
+	log.Printf("Raw response for album %s (length: %d chars): %s", album.ID, len(generatedDescription), generatedDescription)
 
 	// Remove <think> tags and their contents
+	log.Printf("Removing <think> tags from album %s description", album.ID)
 	generatedDescription = removeThinkTags(generatedDescription)
+	log.Printf("After removing <think> tags for album %s (length: %d chars)", album.ID, len(generatedDescription))
 
 	// Append date range information
 	if len(dates) > 0 {
@@ -192,8 +264,10 @@ Provide only the summary, no additional text.`,
 		maxDate := getMaxDate(dates)
 		dateRangeText := fmt.Sprintf(" The album contains photos from dates %s to %s.", minDate, maxDate)
 		generatedDescription += dateRangeText
+		log.Printf("Appended date range to album %s description: %s", album.ID, dateRangeText)
 	}
 
+	log.Printf("Final description for album %s (length: %d chars): %s", album.ID, len(generatedDescription), generatedDescription)
 	return generatedDescription, nil
 }
 
@@ -253,11 +327,15 @@ Rules:
 
 	log.Printf("Album suggestion prompt for photo %s:\n%s", photo.ID, prompt)
 
+	// Build options for the request
+	options := c.buildOllamaOptions()
+
 	req := &api.GenerateRequest{
-		Model:  c.synthModel,
-		Prompt: prompt,
-		Stream: &[]bool{false}[0],
-		Format: "json",
+		Model:   c.synthModel,
+		Prompt:  prompt,
+		Stream:  &[]bool{false}[0],
+		Format:  "json",
+		Options: options,
 	}
 
 	ctx := context.Background()

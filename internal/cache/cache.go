@@ -68,3 +68,7 @@ func (c *Cache) Get(photoID string) ([]string, bool) {
 func (c *Cache) Set(photoID string, suggestions []string) {
 	c.suggestions[photoID] = suggestions
 }
+
+func (c *Cache) Remove(photoID string) {
+	delete(c.suggestions, photoID)
+}

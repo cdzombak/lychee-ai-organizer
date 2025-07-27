@@ -188,10 +188,15 @@
             border-color: #4CAF50;
         }
 
-        .rescan-button {
+        .action-buttons {
+            display: flex;
+            gap: 10px;
             align-self: flex-start;
             margin-left: 20px;
             margin-bottom: 10px;
+        }
+
+        .action-button {
             background-color: #4CAF50;
             color: white;
             border: none;
@@ -202,8 +207,32 @@
             transition: background-color 0.3s ease;
         }
 
-        .rescan-button:hover {
+        .action-button:hover {
             background-color: #45a049;
+        }
+
+        .action-button.secondary {
+            background-color: #2196F3;
+        }
+
+        .action-button.secondary:hover {
+            background-color: #1976D2;
+        }
+
+        .action-button.tertiary {
+            background-color: #FF9800;
+        }
+
+        .action-button.tertiary:hover {
+            background-color: #F57C00;
+        }
+
+        .action-button.quaternary {
+            background-color: #9C27B0;
+        }
+
+        .action-button.quaternary:hover {
+            background-color: #7B1FA2;
         }
 
         .progress-overlay {
@@ -352,6 +381,40 @@
                     preloadVisibleSuggestions();
                 }
             }, [photos]);
+
+            // Add keyboard navigation
+            useEffect(() => {
+                const handleKeyDown = (event) => {
+                    // Only handle arrow keys when not typing in an input field
+                    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+                        return;
+                    }
+                    
+                    switch (event.key) {
+                        case 'ArrowLeft':
+                            event.preventDefault();
+                            if (currentPhotoIndex > 0) {
+                                setCurrentPhotoIndex(currentPhotoIndex - 1);
+                                setTimeout(preloadVisibleSuggestions, 100);
+                            }
+                            break;
+                        case 'ArrowRight':
+                            event.preventDefault();
+                            if (currentPhotoIndex < photos.length - 1) {
+                                setCurrentPhotoIndex(currentPhotoIndex + 1);
+                                setTimeout(preloadVisibleSuggestions, 100);
+                            }
+                            break;
+                    }
+                };
+
+                document.addEventListener('keydown', handleKeyDown);
+                
+                // Cleanup event listener on unmount
+                return () => {
+                    document.removeEventListener('keydown', handleKeyDown);
+                };
+            }, [currentPhotoIndex, photos.length, preloadVisibleSuggestions]);
 
             const initWebSocket = () => {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -520,6 +583,35 @@
             const startDescribeAllAlbums = () => startOperation('describe_all_albums');
             const startRetryAlbumFailures = () => startOperation('retry_album_failures');
 
+            const purgeCacheForCurrentPhoto = async () => {
+                if (!currentPhoto) return;
+                
+                try {
+                    const response = await fetch(`/api/cache/purge?photo_id=${currentPhoto.id}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                    
+                    if (response.ok) {
+                        // Remove from local cache
+                        setSuggestionsCache(prev => {
+                            const newCache = new Map(prev);
+                            newCache.delete(currentPhoto.id);
+                            return newCache;
+                        });
+                        
+                        // Re-request suggestions for current photo
+                        loadSuggestions(currentPhoto.id);
+                    } else {
+                        console.error('Failed to purge cache:', response.statusText);
+                    }
+                } catch (error) {
+                    console.error('Error purging cache:', error);
+                }
+            };
+
             if (progress) {
                 const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
                 
@@ -660,6 +752,13 @@
                         </button>
                         <button className="action-button tertiary" onClick={startRetryAlbumFailures}>
                             Retry Album Failures
+                        </button>
+                        <button 
+                            className="action-button quaternary" 
+                            onClick={purgeCacheForCurrentPhoto}
+                            title="Purge cache and regenerate suggestions for current photo"
+                        >
+                            Purge Cache
                         </button>
                     </div>
 

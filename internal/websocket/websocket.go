@@ -169,28 +169,13 @@ func (h *Handler) sendError(conn *websocket.Conn, errorMsg string) {
 	h.sendMessage(conn, "error", map[string]string{"error": errorMsg})
 }
 
-func (h *Handler) handleDescribePhotos(conn *websocket.Conn) {
-	// Get all photos without AI descriptions (unsorted + top-level albums)
-	photos, err := h.db.GetAllPhotosWithoutAIDescription()
-	if err != nil {
-		h.sendError(conn, "Failed to get photos: "+err.Error())
-		return
-	}
-
-	if len(photos) == 0 {
-		h.sendMessage(conn, "complete", map[string]interface{}{
-			"message": "No photos need descriptions",
-			"errors":  ErrorSummary{PhotoErrors: []string{}, AlbumErrors: []string{}, TotalErrors: 0},
-		})
-		return
-	}
-
+// processPhotos is a helper function to reduce code duplication in photo processing
+func (h *Handler) processPhotos(conn *websocket.Conn, photos []database.Photo, stage string) []string {
 	var photoErrors []string
 	total := len(photos)
 
-	// Process photos
 	for i, photo := range photos {
-		h.sendProgress(conn, "photos", i+1, total, "Processing photo: "+photo.Title)
+		h.sendProgress(conn, stage, i+1, total, "Processing photo: "+photo.Title)
 
 		description, err := h.ollama.GeneratePhotoDescription(&photo)
 		if err != nil {
@@ -207,6 +192,78 @@ func (h *Handler) handleDescribePhotos(conn *websocket.Conn) {
 			continue
 		}
 	}
+
+	return photoErrors
+}
+
+// processAlbums is a helper function to reduce code duplication in album processing
+func (h *Handler) processAlbums(conn *websocket.Conn, albums []database.Album, stage string, startIndex int, total int) []string {
+	var albumErrors []string
+
+	log.Printf("Starting processAlbums with %d albums", len(albums))
+	for i, album := range albums {
+		currentIndex := startIndex + i + 1
+		log.Printf("Processing album %d/%d: %s (%s)", i+1, len(albums), album.ID, album.Title)
+		h.sendProgress(conn, stage, currentIndex, total, "Describing album: "+album.Title)
+
+		log.Printf("Fetching photos for album %s (%s)", album.ID, album.Title)
+		albumPhotos, err := h.db.GetPhotosInAlbum(album.ID)
+		if err != nil {
+			errorMsg := fmt.Sprintf("Album %s (%s): Failed to get photos: %v", album.ID, album.Title, err)
+			log.Printf("Error getting photos for album %s: %v", album.ID, err)
+			albumErrors = append(albumErrors, errorMsg)
+			continue
+		}
+
+		log.Printf("Retrieved %d photos for album %s (%s)", len(albumPhotos), album.ID, album.Title)
+		if len(albumPhotos) == 0 {
+			errorMsg := fmt.Sprintf("Album %s (%s): No photos found", album.ID, album.Title)
+			log.Printf("No photos found for album %s (%s)", album.ID, album.Title)
+			albumErrors = append(albumErrors, errorMsg)
+			continue
+		}
+
+		log.Printf("Generating description for album %s (%s) with %d photos", album.ID, album.Title, len(albumPhotos))
+		description, err := h.ollama.GenerateAlbumDescription(&album, albumPhotos)
+		if err != nil {
+			errorMsg := fmt.Sprintf("Album %s (%s): %v", album.ID, album.Title, err)
+			log.Printf("Error generating album description for %s: %v", album.ID, err)
+			albumErrors = append(albumErrors, errorMsg)
+			continue
+		}
+
+		log.Printf("Successfully generated description for album %s (%s), saving to database", album.ID, album.Title)
+		if err := h.db.UpdateAlbumAIDescription(album.ID, description); err != nil {
+			errorMsg := fmt.Sprintf("Album %s (%s): Failed to save description: %v", album.ID, album.Title, err)
+			log.Printf("Error saving album description for %s: %v", album.ID, err)
+			albumErrors = append(albumErrors, errorMsg)
+			continue
+		}
+		
+		log.Printf("Successfully completed album %s (%s)", album.ID, album.Title)
+	}
+
+	log.Printf("Completed processAlbums: %d errors out of %d albums", len(albumErrors), len(albums))
+	return albumErrors
+}
+
+func (h *Handler) handleDescribePhotos(conn *websocket.Conn) {
+	// Get all photos without AI descriptions (unsorted + top-level albums)
+	photos, err := h.db.GetAllPhotosWithoutAIDescription()
+	if err != nil {
+		h.sendError(conn, "Failed to get photos: "+err.Error())
+		return
+	}
+
+	if len(photos) == 0 {
+		h.sendMessage(conn, "complete", map[string]interface{}{
+			"message": "No photos need descriptions",
+			"errors":  ErrorSummary{PhotoErrors: []string{}, AlbumErrors: []string{}, TotalErrors: 0},
+		})
+		return
+	}
+
+	photoErrors := h.processPhotos(conn, photos, "photos")
 
 	errorSummary := ErrorSummary{
 		PhotoErrors: photoErrors,
@@ -236,42 +293,7 @@ func (h *Handler) handleDescribeAllAlbums(conn *websocket.Conn) {
 		return
 	}
 
-	var albumErrors []string
-	total := len(albums)
-
-	// Process albums
-	for i, album := range albums {
-		h.sendProgress(conn, "albums", i+1, total, "Describing album: "+album.Title)
-
-		albumPhotos, err := h.db.GetPhotosInAlbum(album.ID)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): Failed to get photos: %v", album.ID, album.Title, err)
-			log.Printf("Error getting photos for album %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
-
-		if len(albumPhotos) == 0 {
-			errorMsg := fmt.Sprintf("Album %s (%s): No photos found", album.ID, album.Title)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
-
-		description, err := h.ollama.GenerateAlbumDescription(&album, albumPhotos)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): %v", album.ID, album.Title, err)
-			log.Printf("Error generating album description for %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
-
-		if err := h.db.UpdateAlbumAIDescription(album.ID, description); err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): Failed to save description: %v", album.ID, album.Title, err)
-			log.Printf("Error saving album description for %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
-	}
+	albumErrors := h.processAlbums(conn, albums, "albums", 0, len(albums))
 
 	errorSummary := ErrorSummary{
 		PhotoErrors: []string{},
@@ -301,42 +323,7 @@ func (h *Handler) handleRetryAlbumFailures(conn *websocket.Conn) {
 		return
 	}
 
-	var albumErrors []string
-	total := len(albums)
-
-	// Process albums
-	for i, album := range albums {
-		h.sendProgress(conn, "albums", i+1, total, "Describing album: "+album.Title)
-
-		albumPhotos, err := h.db.GetPhotosInAlbum(album.ID)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): Failed to get photos: %v", album.ID, album.Title, err)
-			log.Printf("Error getting photos for album %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
-
-		if len(albumPhotos) == 0 {
-			errorMsg := fmt.Sprintf("Album %s (%s): No photos found", album.ID, album.Title)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
-
-		description, err := h.ollama.GenerateAlbumDescription(&album, albumPhotos)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): %v", album.ID, album.Title, err)
-			log.Printf("Error generating album description for %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
-
-		if err := h.db.UpdateAlbumAIDescription(album.ID, description); err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): Failed to save description: %v", album.ID, album.Title, err)
-			log.Printf("Error saving album description for %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
-	}
+	albumErrors := h.processAlbums(conn, albums, "albums", 0, len(albums))
 
 	errorSummary := ErrorSummary{
 		PhotoErrors: []string{},

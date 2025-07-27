@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"lychee-ai-organizer/internal/config"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -197,12 +198,24 @@ func (db *DB) UpdatePhotoAIDescription(photoID, description string) error {
 }
 
 func (db *DB) UpdateAlbumAIDescription(albumID, description string) error {
+	log.Printf("Updating AI description for album %s (description length: %d)", albumID, len(description))
 	query := `UPDATE base_albums SET _ai_description = ?, _ai_description_ts = NOW() WHERE id = ?`
-	_, err := db.conn.Exec(query, description, albumID)
-	return err
+	
+	log.Printf("Executing UPDATE query for album %s", albumID)
+	result, err := db.conn.Exec(query, description, albumID)
+	if err != nil {
+		log.Printf("Failed to update album %s: %v", albumID, err)
+		return err
+	}
+	
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Successfully updated album %s (%d rows affected)", albumID, rowsAffected)
+	return nil
 }
 
 func (db *DB) GetPhotosInAlbum(albumID string) ([]Photo, error) {
+	log.Printf("Starting GetPhotosInAlbum for album %s", albumID)
+	
 	query := `
 		SELECT p.id, p.created_at, p.updated_at, p.owner_id, p.old_album_id, p.title, p.description, 
 		       p.tags, p.license, p.is_starred, p.iso, p.make, p.model, p.lens, p.aperture, p.shutter, 
@@ -215,14 +228,22 @@ func (db *DB) GetPhotosInAlbum(albumID string) ([]Photo, error) {
 		WHERE pa.album_id = ?
 		ORDER BY p.taken_at DESC, p.created_at DESC`
 
+	log.Printf("Executing query for album %s", albumID)
 	rows, err := db.conn.Query(query, albumID)
 	if err != nil {
+		log.Printf("Query failed for album %s: %v", albumID, err)
 		return nil, err
 	}
 	defer rows.Close()
+	
+	log.Printf("Query successful for album %s, processing rows...", albumID)
 
 	var photos []Photo
+	photoCount := 0
 	for rows.Next() {
+		photoCount++
+		log.Printf("Processing photo %d for album %s", photoCount, albumID)
+		
 		var photo Photo
 		err := rows.Scan(
 			&photo.ID, &photo.CreatedAt, &photo.UpdatedAt, &photo.OwnerID,
@@ -236,11 +257,15 @@ func (db *DB) GetPhotosInAlbum(albumID string) ([]Photo, error) {
 			&photo.LivePhotoChecksum, &photo.AIDescription, &photo.AIDescriptionTimestamp,
 		)
 		if err != nil {
+			log.Printf("Error scanning photo %d for album %s: %v", photoCount, albumID, err)
 			return nil, err
 		}
+		
+		log.Printf("Successfully scanned photo %s (%s) for album %s", photo.ID, photo.Title, albumID)
 		photos = append(photos, photo)
 	}
 
+	log.Printf("Completed GetPhotosInAlbum for album %s: found %d photos", albumID, len(photos))
 	return photos, rows.Err()
 }
 

@@ -113,7 +113,7 @@ func (f *Fetcher) ConstructImageURL(variant *database.SizeVariant) string {
 			shortPath = strings.TrimPrefix(shortPath, "original/")
 		}
 		return fmt.Sprintf("%s/uploads/original/%s", f.baseURL, shortPath)
-	} else if variant.Type == 6 && strings.HasPrefix(variant.ShortPath, "thumb/") {
+	} else if variant.Type == database.SizeVariantThumb && strings.HasPrefix(variant.ShortPath, "thumb/") {
 		// For thumbnails where short_path already includes "thumb/" prefix
 		return fmt.Sprintf("%s/uploads/%s", f.baseURL, variant.ShortPath)
 	} else if variant.Type == database.SizeVariantMedium && strings.HasPrefix(variant.ShortPath, "medium/") {
@@ -125,7 +125,7 @@ func (f *Fetcher) ConstructImageURL(variant *database.SizeVariant) string {
 		switch variant.Type {
 		case database.SizeVariantMedium:
 			sizeDir = "medium"
-		case 6: // Thumbnail type
+		case database.SizeVariantThumb: // Thumbnail type
 			sizeDir = "thumb"
 		default:
 			sizeDir = "medium" // Default fallback

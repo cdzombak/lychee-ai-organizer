@@ -7,7 +7,8 @@
       "Bash(go build:*)",
       "Bash(go mod:*)",
       "Bash(curl:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(touch:*)"
     ],
     "deny": []
   }

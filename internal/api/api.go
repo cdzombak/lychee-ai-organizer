@@ -63,6 +63,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/photos/unsorted", s.handleUnsortedPhotos)
 	s.mux.HandleFunc("/api/photos/suggestions", s.handlePhotoSuggestions)
 	s.mux.HandleFunc("/api/photos/move", s.handleMovePhoto)
+	s.mux.HandleFunc("/api/cache/purge", s.handlePurgeCache)
 	s.mux.HandleFunc("/api/rescan", s.handleRescan)
 	s.mux.HandleFunc("/", s.handleStatic)
 }
@@ -271,6 +272,31 @@ func (s *Server) handleMovePhoto(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
+func (s *Server) handlePurgeCache(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	photoID := r.URL.Query().Get("photo_id")
+	if photoID == "" {
+		http.Error(w, "photo_id parameter required", http.StatusBadRequest)
+		return
+	}
+
+	// Remove the specific photo from cache
+	s.cache.Remove(photoID)
+	
+	// Save the updated cache
+	if err := s.cache.Save(); err != nil {
+		log.Printf("Error saving cache after purge: %v", err)
+		// Don't fail the request, just log the error
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "cache purged for photo"})
+}
+
 func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -408,7 +434,7 @@ func (s *Server) selectBestVariantURL(variants []database.SizeVariant, isThumb b
 	if isThumb {
 		// For thumbnails, prefer thumb (6) > medium (2) > original (0)
 		for _, v := range variants {
-			if v.Type == 6 { // Thumb
+			if v.Type == database.SizeVariantThumb { // Thumb
 				selectedVariant = &v
 				break
 			}

@@ -82,5 +82,6 @@ type SizeVariant struct {
 
 const (
 	SizeVariantOriginal = 0
-	SizeVariantMedium   = 2 // Assuming medium is type 2 based on common Lychee setup
+	SizeVariantMedium   = 2 // Medium size variant
+	SizeVariantThumb    = 6 // Thumbnail size variant
 )
