@@ -21,6 +21,13 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
+const (
+	// maxDescriptionsBeforeCompaction is the threshold for applying hierarchical compaction
+	maxDescriptionsBeforeCompaction = 30
+	// retryAttempts is the number of times to retry failed API calls
+	retryAttempts = 3
+)
+
 type Client struct {
 	client       *api.Client
 	imageModel   string
@@ -95,25 +102,10 @@ Provide only the description, no additional text.`,
 	}
 
 	ctx := context.Background()
-	var response strings.Builder
-
-	err = retry.Do(
-		func() error {
-			response.Reset() // Clear previous attempts
-			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
-				response.WriteString(resp.Response)
-				return nil
-			})
-		},
-		retry.Attempts(3),
-		retry.Delay(time.Second),
-		retry.DelayType(retry.BackOffDelay),
-	)
+	description, err := c.generateWithRetry(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate photo description after retries: %w", err)
 	}
-
-	description := strings.TrimSpace(response.String())
 
 	// Remove <think> tags and their contents
 	description = removeThinkTags(description)
@@ -154,21 +146,89 @@ func (c *Client) buildOllamaOptions() map[string]interface{} {
 	return options
 }
 
-func (c *Client) GenerateAlbumDescription(album *database.Album, photos []database.Photo) (string, error) {
-	log.Printf("Starting album description generation for album %s (%s) with %d photos", album.ID, album.Title, len(photos))
+// generateWithRetry performs an Ollama API call with retry logic
+func (c *Client) generateWithRetry(ctx context.Context, req *api.GenerateRequest) (string, error) {
+	var response strings.Builder
 
+	err := retry.Do(
+		func() error {
+			response.Reset() // Clear previous attempts
+			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
+				response.WriteString(resp.Response)
+				return nil
+			})
+		},
+		retry.Attempts(retryAttempts),
+		retry.Delay(time.Second),
+		retry.DelayType(retry.BackOffDelay),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(response.String()), nil
+}
+
+func (c *Client) GenerateAlbumDescription(album *database.Album, photos []database.Photo) (string, error) {
+	log.Printf("Generating description for album %s (%s) with %d photos", album.ID, album.Title, len(photos))
+
+	photoDescriptions, dates, err := c.extractPhotoData(photos)
+	if err != nil {
+		return "", err
+	}
+
+	if len(photoDescriptions) == 0 {
+		return "", fmt.Errorf("no photo descriptions available for album synthesis")
+	}
+
+	// Apply hierarchical compaction if needed
+	compactedDescriptions := photoDescriptions
+	if len(photoDescriptions) > maxDescriptionsBeforeCompaction {
+		log.Printf("Album %s has %d descriptions, applying compaction", album.ID, len(photoDescriptions))
+		compactedDescriptions, err = c.compactDescriptionsHierarchically(album.ID, photoDescriptions)
+		if err != nil {
+			return "", fmt.Errorf("failed to compact descriptions: %w", err)
+		}
+		log.Printf("Compacted %d descriptions to %d for album %s", len(photoDescriptions), len(compactedDescriptions), album.ID)
+	}
+
+	prompt := c.buildAlbumDescriptionPrompt(compactedDescriptions, dates)
+	req := &api.GenerateRequest{
+		Model:   c.synthModel,
+		Prompt:  prompt,
+		Stream:  &[]bool{false}[0],
+		Options: c.buildOllamaOptions(),
+	}
+
+	ctx := context.Background()
+	generatedDescription, err := c.generateWithRetry(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate album description after retries: %w", err)
+	}
+
+	// Remove <think> tags and their contents
+	generatedDescription = removeThinkTags(generatedDescription)
+
+	// Append date range information
+	if len(dates) > 0 {
+		minDate := getMinDate(dates)
+		maxDate := getMaxDate(dates)
+		dateRangeText := fmt.Sprintf(" The album contains photos from dates %s to %s.", minDate, maxDate)
+		generatedDescription += dateRangeText
+	}
+
+	log.Printf("Generated description for album %s (length: %d chars)", album.ID, len(generatedDescription))
+	return generatedDescription, nil
+}
+
+// extractPhotoData extracts descriptions and dates from photos
+func (c *Client) extractPhotoData(photos []database.Photo) ([]string, []string, error) {
 	var photoDescriptions []string
 	var dates []string
 
-	log.Printf("Processing photos for album %s...", album.ID)
-	for i, photo := range photos {
-		log.Printf("Processing photo %d/%d (ID: %s) for album %s", i+1, len(photos), photo.ID, album.ID)
-
+	for _, photo := range photos {
 		if photo.AIDescription.Valid {
 			photoDescriptions = append(photoDescriptions, photo.AIDescription.String)
-			log.Printf("Added AI description for photo %s (length: %d chars)", photo.ID, len(photo.AIDescription.String))
-		} else {
-			log.Printf("Photo %s has no AI description, skipping", photo.ID)
 		}
 
 		// Use taken_at if available, otherwise fall back to created_at
@@ -179,32 +239,15 @@ func (c *Client) GenerateAlbumDescription(album *database.Album, photos []databa
 		}
 	}
 
-	log.Printf("Collected %d photo descriptions and %d dates for album %s", len(photoDescriptions), len(dates), album.ID)
+	return photoDescriptions, dates, nil
+}
 
-	if len(photoDescriptions) == 0 {
-		log.Printf("No photo descriptions available for album %s synthesis", album.ID)
-		return "", fmt.Errorf("no photo descriptions available for album synthesis")
-	}
-
-	// Apply hierarchical compaction if we have more than 30 descriptions
-	compactedDescriptions := photoDescriptions
-	if len(photoDescriptions) > 30 {
-		log.Printf("Album %s has %d descriptions, applying hierarchical compaction", album.ID, len(photoDescriptions))
-		var err error
-		compactedDescriptions, err = c.compactDescriptionsHierarchically(album.ID, photoDescriptions)
-		if err != nil {
-			log.Printf("Failed to compact descriptions for album %s: %v", album.ID, err)
-			return "", fmt.Errorf("failed to compact descriptions: %w", err)
-		}
-		log.Printf("Compacted %d descriptions down to %d for album %s", len(photoDescriptions), len(compactedDescriptions), album.ID)
-	}
-
-	log.Printf("Creating prompt for album %s with %d descriptions", album.ID, len(compactedDescriptions))
+// buildAlbumDescriptionPrompt creates the prompt for album description generation
+func (c *Client) buildAlbumDescriptionPrompt(descriptions []string, dates []string) string {
 	minDate := getMinDate(dates)
 	maxDate := getMaxDate(dates)
-	log.Printf("Date range for album %s: %s to %s", album.ID, minDate, maxDate)
 
-	prompt := fmt.Sprintf(`Based on the following photo descriptions from an album, create a concise summary that captures the essence of this photo collection:
+	return fmt.Sprintf(`Based on the following photo descriptions from an album, create a concise summary that captures the essence of this photo collection:
 
 Photo descriptions:
 %s
@@ -216,68 +259,9 @@ Provide a cohesive summary that synthesizes the common themes, subjects, and moo
 IMPORTANT: Keep your response to a maximum of 2 sentences. Be concise and focus on the most important aspects.
 
 Provide only the summary, no additional text.`,
-		strings.Join(compactedDescriptions, "\n- "),
+		strings.Join(descriptions, "\n- "),
 		minDate,
 		maxDate)
-
-	log.Printf("Generated prompt for album %s (length: %d chars)", album.ID, len(prompt))
-
-	log.Printf("Creating Ollama request for album %s using model %s", album.ID, c.synthModel)
-
-	// Build options for the request
-	options := c.buildOllamaOptions()
-	log.Printf("Using Ollama options for album %s: %+v", album.ID, options)
-
-	req := &api.GenerateRequest{
-		Model:   c.synthModel,
-		Prompt:  prompt,
-		Stream:  &[]bool{false}[0],
-		Options: options,
-	}
-
-	ctx := context.Background()
-	var response strings.Builder
-
-	log.Printf("Starting Ollama API call for album %s...", album.ID)
-	err := retry.Do(
-		func() error {
-			log.Printf("Attempting Ollama API call for album %s", album.ID)
-			response.Reset() // Clear previous attempts
-			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
-				log.Printf("Received response chunk for album %s (length: %d)", album.ID, len(resp.Response))
-				response.WriteString(resp.Response)
-				return nil
-			})
-		},
-		retry.Attempts(3),
-		retry.Delay(time.Second),
-		retry.DelayType(retry.BackOffDelay),
-	)
-	if err != nil {
-		log.Printf("Failed to generate album description for album %s after retries: %v", album.ID, err)
-		return "", fmt.Errorf("failed to generate album description after retries: %w", err)
-	}
-
-	log.Printf("Successfully received response from Ollama for album %s", album.ID)
-	generatedDescription := strings.TrimSpace(response.String())
-	log.Printf("Raw response for album %s (length: %d chars): %s", album.ID, len(generatedDescription), generatedDescription)
-
-	// Remove <think> tags and their contents
-	log.Printf("Removing <think> tags from album %s description", album.ID)
-	generatedDescription = removeThinkTags(generatedDescription)
-	log.Printf("After removing <think> tags for album %s (length: %d chars)", album.ID, len(generatedDescription))
-
-	// Append date range information
-	if len(dates) > 0 {
-		minDate := getMinDate(dates)
-		maxDate := getMaxDate(dates)
-		dateRangeText := fmt.Sprintf(" The album contains photos from dates %s to %s.", minDate, maxDate)
-		generatedDescription += dateRangeText
-		log.Printf("Appended date range to album %s description: %s", album.ID, dateRangeText)
-	}
-
-	log.Printf("Final description for album %s (length: %d chars): %s", album.ID, len(generatedDescription), generatedDescription)
-	return generatedDescription, nil
 }
 
 func (c *Client) GenerateAlbumSuggestions(photo *database.Photo, albums []database.Album) ([]string, error) {
@@ -348,20 +332,7 @@ Rules:
 	}
 
 	ctx := context.Background()
-	var response strings.Builder
-
-	err := retry.Do(
-		func() error {
-			response.Reset() // Clear previous attempts
-			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
-				response.WriteString(resp.Response)
-				return nil
-			})
-		},
-		retry.Attempts(3),
-		retry.Delay(time.Second),
-		retry.DelayType(retry.BackOffDelay),
-	)
+	responseText, err := c.generateWithRetry(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate album suggestions after retries: %w", err)
 	}
@@ -371,7 +342,6 @@ Rules:
 		AlbumIDs []string `json:"album_ids"`
 	}
 
-	responseText := strings.TrimSpace(response.String())
 	log.Printf("Album suggestion response for photo %s: %s", photo.ID, responseText)
 
 	if err := json.Unmarshal([]byte(responseText), &jsonResponse); err != nil {
@@ -483,11 +453,9 @@ func isMovieFile(photo *database.Photo, variant *database.SizeVariant) bool {
 	return false
 }
 
-// compactDescriptionsHierarchically applies recursive batch compression to reduce descriptions to 30 or fewer
+// compactDescriptionsHierarchically applies recursive batch compression to reduce descriptions to manageable size
 func (c *Client) compactDescriptionsHierarchically(albumID string, descriptions []string) ([]string, error) {
-	const batchSize = 30
-
-	if len(descriptions) <= batchSize {
+	if len(descriptions) <= maxDescriptionsBeforeCompaction {
 		return descriptions, nil
 	}
 
@@ -495,8 +463,8 @@ func (c *Client) compactDescriptionsHierarchically(albumID string, descriptions 
 
 	// Create batches of descriptions
 	batches := make([][]string, 0)
-	for i := 0; i < len(descriptions); i += batchSize {
-		end := i + batchSize
+	for i := 0; i < len(descriptions); i += maxDescriptionsBeforeCompaction {
+		end := i + maxDescriptionsBeforeCompaction
 		if end > len(descriptions) {
 			end = len(descriptions)
 		}
@@ -520,7 +488,7 @@ func (c *Client) compactDescriptionsHierarchically(albumID string, descriptions 
 	}
 
 	// If we still have too many compressed batches, recursively compress them
-	if len(compressedBatches) > batchSize {
+	if len(compressedBatches) > maxDescriptionsBeforeCompaction {
 		log.Printf("Still have %d compressed batches for album %s, applying another level of compaction", len(compressedBatches), albumID)
 		return c.compactDescriptionsHierarchically(albumID, compressedBatches)
 	}
@@ -560,25 +528,10 @@ Provide only the summary, no additional text.`,
 	}
 
 	ctx := context.Background()
-	var response strings.Builder
-
-	err := retry.Do(
-		func() error {
-			response.Reset()
-			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
-				response.WriteString(resp.Response)
-				return nil
-			})
-		},
-		retry.Attempts(3),
-		retry.Delay(time.Second),
-		retry.DelayType(retry.BackOffDelay),
-	)
+	compressed, err := c.generateWithRetry(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("failed to compress batch descriptions after retries: %w", err)
 	}
-
-	compressed := strings.TrimSpace(response.String())
 
 	// Remove <think> tags and their contents
 	compressed = removeThinkTags(compressed)
