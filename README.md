@@ -37,10 +37,10 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
 ## Ollama Setup
 
 1. Install and start Ollama
-2. Pull the required models:
+2. Pull the recommended models:
    ```bash
-   ollama pull llava:7b          # For image analysis
-   ollama pull llama3.1:8b       # For description synthesis
+   ollama pull qwen2.5vl:3b      # For image analysis (recommended)
+   ollama pull qwen3:8b          # For description synthesis (recommended)
    ```
 
 ## Configuration
@@ -62,8 +62,9 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
      },
      "ollama": {
        "endpoint": "http://localhost:11434",
-       "image_analysis_model": "llava:7b",
-       "description_synthesis_model": "llama3.1:8b"
+       "image_analysis_model": "qwen2.5vl:3b",
+       "description_synthesis_model": "qwen3:8b",
+       "context_window": 40960
      },
      "server": {
        "host": "localhost",
@@ -82,6 +83,97 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
      - Album suggestions for unsorted photos
      - Progress tracking during rescan operations
    - **Pinned Only**: Set `pinned_only` to `true` to restrict album suggestions to only pinned albums (`is_pinned = true` in the database). This helps focus suggestions on your most important albums.
+
+### Ollama Configuration Options
+
+The application supports configuring various Ollama parameters to optimize performance and handle large prompts.
+
+#### Configuration Parameters
+
+**Required Fields**
+- `endpoint`: Ollama API endpoint URL
+- `image_analysis_model`: Model for analyzing photos (recommended: "qwen2.5vl:3b")
+- `description_synthesis_model`: Model for generating descriptions (recommended: "qwen3:8b")
+
+**Optional Performance Parameters**
+- `context_window`: Maximum context length (tokens). Default: model default
+- `temperature`: Sampling temperature (0.0-1.0). Default: model default
+- `top_p`: Top-p sampling (0.0-1.0). Default: model default
+- `options`: Additional Ollama parameters as key-value pairs
+
+#### Common Issues and Solutions
+
+**Prompt Truncation**
+If you see "truncating input prompt" in Ollama logs, increase the `context_window`:
+
+```json
+{
+  "ollama": {
+    "context_window": 32768
+  }
+}
+```
+
+**Large Album Processing**
+For albums with many photos generating long prompts:
+- Set `context_window` to 32768 or higher
+- Consider reducing `temperature` for more consistent output
+
+#### Example Configurations
+
+**Basic Configuration (Recommended)**
+```json
+{
+  "ollama": {
+    "endpoint": "http://localhost:11434",
+    "image_analysis_model": "qwen2.5vl:3b",
+    "description_synthesis_model": "qwen3:8b",
+    "context_window": 40960
+  }
+}
+```
+
+**Advanced Configuration**
+```json
+{
+  "ollama": {
+    "endpoint": "http://localhost:11434",
+    "image_analysis_model": "llava:13b",
+    "description_synthesis_model": "deepseek-r1:8b",
+    "context_window": 32768,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "options": {
+      "num_predict": 512,
+      "repeat_penalty": 1.1
+    }
+  }
+}
+```
+
+#### Model-Specific Recommendations
+
+**Qwen2.5VL:3b + Qwen3:8b (Recommended)**
+- Best overall performance for photo organization tasks
+- Excellent image understanding and description generation
+- Context window: 40960 (recommended)
+- Temperature: 0.7
+- Good balance of speed and accuracy
+
+**DeepSeek-R1**
+- Context window: 32768 or higher (supports up to 131K)
+- Temperature: 0.7
+- Good for reasoning about album content
+
+**Llama 3.1**
+- Context window: 8192-32768
+- Temperature: 0.8
+- Balanced performance
+
+**Qwen2**
+- Context window: 32768 (supports up to 128K)
+- Temperature: 0.7
+- Excellent for multilingual content
 
 ## Building and Running
 
