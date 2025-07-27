@@ -45,18 +45,20 @@ type Photo struct {
 
 type Album struct {
 	ID                     string         `db:"id"`
+	CreatedAt              time.Time      `db:"created_at"`
+	UpdatedAt              time.Time      `db:"updated_at"`
+	PublishedAt            sql.NullTime   `db:"published_at"`
 	Title                  string         `db:"title"`
-	ParentID               sql.NullString `db:"parent_id"`
-	License                string         `db:"license"`
-	AlbumThumbAspectRatio  sql.NullString `db:"album_thumb_aspect_ratio"`
-	AlbumTimeline          sql.NullString `db:"album_timeline"`
-	AlbumSortingCol        sql.NullString `db:"album_sorting_col"`
-	AlbumSortingOrder      sql.NullString `db:"album_sorting_order"`
-	CoverID                sql.NullString `db:"cover_id"`
-	HeaderID               sql.NullString `db:"header_id"`
-	TrackShortPath         sql.NullString `db:"track_short_path"`
-	Lft                    int64          `db:"_lft"`
-	Rgt                    int64          `db:"_rgt"`
+	Description            sql.NullString `db:"description"`
+	OwnerID                int            `db:"owner_id"`
+	IsNsfw                 bool           `db:"is_nsfw"`
+	IsPinned               bool           `db:"is_pinned"`
+	SortingCol             sql.NullString `db:"sorting_col"`
+	SortingOrder           sql.NullString `db:"sorting_order"`
+	Copyright              sql.NullString `db:"copyright"`
+	PhotoLayout            sql.NullString `db:"photo_layout"`
+	PhotoTimeline          sql.NullString `db:"photo_timeline"`
+	ParentID               sql.NullString `db:"parent_id"` // From albums table join
 	AIDescription          sql.NullString `db:"_ai_description"`
 	AIDescriptionTimestamp sql.NullTime   `db:"_ai_description_ts"`
 }

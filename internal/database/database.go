@@ -79,13 +79,14 @@ func (db *DB) GetUnsortedPhotos() ([]Photo, error) {
 
 func (db *DB) GetTopLevelAlbums() ([]Album, error) {
 	query := `
-		SELECT a.id, ba.title, a.parent_id, a.license, a.album_thumb_aspect_ratio, a.album_timeline,
-		       a.album_sorting_col, a.album_sorting_order, a.cover_id, a.header_id,
-		       a.track_short_path, a._lft, a._rgt, a._ai_description, a._ai_description_ts
-		FROM albums a
-		JOIN base_albums ba ON a.id = ba.id
-		WHERE a.parent_id IS NULL
-		ORDER BY a._lft`
+		SELECT ba.id, ba.created_at, ba.updated_at, ba.published_at, ba.title, ba.description,
+		       ba.owner_id, ba.is_nsfw, ba.is_pinned, ba.sorting_col, ba.sorting_order,
+		       ba.copyright, ba.photo_layout, ba.photo_timeline, a.parent_id,
+		       ba._ai_description, ba._ai_description_ts
+		FROM base_albums ba
+		LEFT JOIN albums a ON ba.id = a.id
+		WHERE a.parent_id IS NULL OR a.id IS NULL
+		ORDER BY ba.title`
 
 	rows, err := db.conn.Query(query)
 	if err != nil {
@@ -97,10 +98,11 @@ func (db *DB) GetTopLevelAlbums() ([]Album, error) {
 	for rows.Next() {
 		var album Album
 		err := rows.Scan(
-			&album.ID, &album.Title, &album.ParentID, &album.License, &album.AlbumThumbAspectRatio,
-			&album.AlbumTimeline, &album.AlbumSortingCol, &album.AlbumSortingOrder,
-			&album.CoverID, &album.HeaderID, &album.TrackShortPath, &album.Lft,
-			&album.Rgt, &album.AIDescription, &album.AIDescriptionTimestamp,
+			&album.ID, &album.CreatedAt, &album.UpdatedAt, &album.PublishedAt,
+			&album.Title, &album.Description, &album.OwnerID, &album.IsNsfw,
+			&album.IsPinned, &album.SortingCol, &album.SortingOrder,
+			&album.Copyright, &album.PhotoLayout, &album.PhotoTimeline,
+			&album.ParentID, &album.AIDescription, &album.AIDescriptionTimestamp,
 		)
 		if err != nil {
 			return nil, err
@@ -154,13 +156,14 @@ func (db *DB) GetPhotosWithoutAIDescription() ([]Photo, error) {
 
 func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
 	query := `
-		SELECT a.id, ba.title, a.parent_id, a.license, a.album_thumb_aspect_ratio, a.album_timeline,
-		       a.album_sorting_col, a.album_sorting_order, a.cover_id, a.header_id,
-		       a.track_short_path, a._lft, a._rgt, a._ai_description, a._ai_description_ts
-		FROM albums a
-		JOIN base_albums ba ON a.id = ba.id
-		WHERE a.parent_id IS NULL AND a._ai_description IS NULL
-		ORDER BY a._lft`
+		SELECT ba.id, ba.created_at, ba.updated_at, ba.published_at, ba.title, ba.description,
+		       ba.owner_id, ba.is_nsfw, ba.is_pinned, ba.sorting_col, ba.sorting_order,
+		       ba.copyright, ba.photo_layout, ba.photo_timeline, a.parent_id,
+		       ba._ai_description, ba._ai_description_ts
+		FROM base_albums ba
+		LEFT JOIN albums a ON ba.id = a.id
+		WHERE (a.parent_id IS NULL OR a.id IS NULL) AND ba._ai_description IS NULL
+		ORDER BY ba.title`
 
 	rows, err := db.conn.Query(query)
 	if err != nil {
@@ -172,10 +175,11 @@ func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
 	for rows.Next() {
 		var album Album
 		err := rows.Scan(
-			&album.ID, &album.Title, &album.ParentID, &album.License, &album.AlbumThumbAspectRatio,
-			&album.AlbumTimeline, &album.AlbumSortingCol, &album.AlbumSortingOrder,
-			&album.CoverID, &album.HeaderID, &album.TrackShortPath, &album.Lft,
-			&album.Rgt, &album.AIDescription, &album.AIDescriptionTimestamp,
+			&album.ID, &album.CreatedAt, &album.UpdatedAt, &album.PublishedAt,
+			&album.Title, &album.Description, &album.OwnerID, &album.IsNsfw,
+			&album.IsPinned, &album.SortingCol, &album.SortingOrder,
+			&album.Copyright, &album.PhotoLayout, &album.PhotoTimeline,
+			&album.ParentID, &album.AIDescription, &album.AIDescriptionTimestamp,
 		)
 		if err != nil {
 			return nil, err
@@ -193,7 +197,7 @@ func (db *DB) UpdatePhotoAIDescription(photoID, description string) error {
 }
 
 func (db *DB) UpdateAlbumAIDescription(albumID, description string) error {
-	query := `UPDATE albums SET _ai_description = ?, _ai_description_ts = NOW() WHERE id = ?`
+	query := `UPDATE base_albums SET _ai_description = ?, _ai_description_ts = NOW() WHERE id = ?`
 	_, err := db.conn.Exec(query, description, albumID)
 	return err
 }
@@ -244,6 +248,53 @@ func (db *DB) MovePhotoToAlbum(photoID, albumID string) error {
 	query := `INSERT INTO photo_album (album_id, photo_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE album_id = ?`
 	_, err := db.conn.Exec(query, albumID, photoID, albumID)
 	return err
+}
+
+func (db *DB) GetAllPhotosWithoutAIDescription() ([]Photo, error) {
+	query := `
+		SELECT id, created_at, updated_at, owner_id, old_album_id, title, description, 
+		       tags, license, is_starred, iso, make, model, lens, aperture, shutter, 
+		       focal, latitude, longitude, altitude, img_direction, location, taken_at, 
+		       taken_at_orig_tz, initial_taken_at, initial_taken_at_orig_tz, type, 
+		       filesize, checksum, original_checksum, live_photo_short_path, 
+		       live_photo_content_id, live_photo_checksum, _ai_description, _ai_description_ts
+		FROM photos 
+		WHERE _ai_description IS NULL AND (
+			id NOT IN (SELECT photo_id FROM photo_album) OR 
+			id IN (SELECT DISTINCT pa.photo_id FROM photo_album pa 
+				   JOIN base_albums ba ON pa.album_id = ba.id 
+				   LEFT JOIN albums a ON ba.id = a.id 
+				   WHERE a.parent_id IS NULL OR a.id IS NULL)
+		)
+		ORDER BY taken_at DESC, created_at DESC`
+
+	rows, err := db.conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var photos []Photo
+	for rows.Next() {
+		var photo Photo
+		err := rows.Scan(
+			&photo.ID, &photo.CreatedAt, &photo.UpdatedAt, &photo.OwnerID,
+			&photo.OldAlbumID, &photo.Title, &photo.Description, &photo.Tags,
+			&photo.License, &photo.IsStarred, &photo.ISO, &photo.Make, &photo.Model,
+			&photo.Lens, &photo.Aperture, &photo.Shutter, &photo.Focal,
+			&photo.Latitude, &photo.Longitude, &photo.Altitude, &photo.ImgDirection,
+			&photo.Location, &photo.TakenAt, &photo.TakenAtOrigTz, &photo.InitialTakenAt,
+			&photo.InitialTakenAtOrigTz, &photo.Type, &photo.Filesize, &photo.Checksum,
+			&photo.OriginalChecksum, &photo.LivePhotoShortPath, &photo.LivePhotoContentID,
+			&photo.LivePhotoChecksum, &photo.AIDescription, &photo.AIDescriptionTimestamp,
+		)
+		if err != nil {
+			return nil, err
+		}
+		photos = append(photos, photo)
+	}
+
+	return photos, rows.Err()
 }
 
 func (db *DB) GetPhotoSizeVariant(photoID string) (*SizeVariant, error) {

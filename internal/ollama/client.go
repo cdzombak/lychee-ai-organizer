@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -47,10 +48,15 @@ func NewClient(cfg *config.OllamaConfig, db *database.DB, imageFetcher *images.F
 }
 
 func (c *Client) GeneratePhotoDescription(photo *database.Photo) (string, error) {
-	// Get the image variant for this photo
+	// Get the image variant for this photo first to check filename
 	variant, err := c.db.GetPhotoSizeVariant(photo.ID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get image variant: %w", err)
+	}
+
+	// Check if this is a movie file - if so, skip it
+	if isMovieFile(photo, variant) {
+		return "", fmt.Errorf("skipping movie file (type: %s, path: %s)", photo.Type, variant.ShortPath)
 	}
 
 	// Fetch the image bytes
@@ -359,4 +365,33 @@ func getMaxDate(dates []string) string {
 		}
 	}
 	return max
+}
+
+// isMovieFile checks if a photo is actually a movie file based on its type and filename
+func isMovieFile(photo *database.Photo, variant *database.SizeVariant) bool {
+	// Common movie file extensions
+	movieExtensions := []string{
+		".mp4", ".m4v", ".mov", ".avi", ".mkv", ".wmv", ".flv", 
+		".webm", ".ogv", ".3gp", ".m2v", ".mpg", ".mpeg", ".mts", ".m2ts",
+	}
+	
+	// Check the photo type field (which should contain the file extension)
+	photoType := strings.ToLower(photo.Type)
+	for _, ext := range movieExtensions {
+		if photoType == ext || photoType == strings.TrimPrefix(ext, ".") {
+			return true
+		}
+	}
+	
+	// Also check the file extension from the variant's short_path
+	if variant != nil {
+		fileExt := strings.ToLower(filepath.Ext(variant.ShortPath))
+		for _, ext := range movieExtensions {
+			if fileExt == ext {
+				return true
+			}
+		}
+	}
+	
+	return false
 }

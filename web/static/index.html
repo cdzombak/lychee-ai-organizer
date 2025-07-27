@@ -278,6 +278,42 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .error-summary {
+            background-color: #2a2a2a;
+            border: 2px solid #f44336;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .error-summary h3 {
+            color: #f44336;
+            margin-bottom: 15px;
+        }
+
+        .error-list {
+            background-color: #1a1a1a;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .error-item {
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ffcccb;
+        }
+
+        .success-message {
+            color: #4CAF50;
+            font-weight: bold;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -294,6 +330,7 @@
             const [suggestionsCache, setSuggestionsCache] = useState(new Map());
             const [loading, setLoading] = useState(true);
             const [progress, setProgress] = useState(null);
+            const [completionResult, setCompletionResult] = useState(null);
             const [ws, setWs] = useState(null);
 
             const currentPhoto = photos[currentPhotoIndex];
@@ -327,14 +364,20 @@
                     switch (message.type) {
                         case 'progress':
                             setProgress(message.payload);
+                            setCompletionResult(null);
                             break;
                         case 'complete':
                             setProgress(null);
+                            setCompletionResult(message.payload);
                             loadPhotos();
                             break;
                         case 'error':
                             console.error('WebSocket error:', message.payload.error);
                             setProgress(null);
+                            setCompletionResult({
+                                message: 'Operation failed: ' + message.payload.error,
+                                errors: { photo_errors: [], album_errors: [message.payload.error], total_errors: 1 }
+                            });
                             break;
                     }
                 };
@@ -467,11 +510,15 @@
                 }
             };
 
-            const startRescan = () => {
+            const startOperation = (operationType) => {
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'start_rescan' }));
+                    ws.send(JSON.stringify({ type: operationType }));
                 }
             };
+
+            const startDescribePhotos = () => startOperation('describe_photos');
+            const startDescribeAllAlbums = () => startOperation('describe_all_albums');
+            const startRetryAlbumFailures = () => startOperation('retry_album_failures');
 
             if (progress) {
                 const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
@@ -485,6 +532,56 @@
                                 <div className="progress-fill" style={{width: `${progressPercent}%`}}></div>
                             </div>
                             <p>{progress.current} of {progress.total} items processed</p>
+                            {progress.stage && <p>Stage: {progress.stage}</p>}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (completionResult) {
+                const hasErrors = completionResult.errors && completionResult.errors.total_errors > 0;
+                
+                return (
+                    <div className="progress-overlay">
+                        <div className="progress-content">
+                            <h2>Operation Complete</h2>
+                            <p className="success-message">{completionResult.message}</p>
+                            
+                            {hasErrors && (
+                                <div className="error-summary">
+                                    <h3>Errors Encountered ({completionResult.errors.total_errors})</h3>
+                                    
+                                    {completionResult.errors.photo_errors && completionResult.errors.photo_errors.length > 0 && (
+                                        <div>
+                                            <h4>Photo Errors:</h4>
+                                            <div className="error-list">
+                                                {completionResult.errors.photo_errors.map((error, index) => (
+                                                    <div key={index} className="error-item">{error}</div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {completionResult.errors.album_errors && completionResult.errors.album_errors.length > 0 && (
+                                        <div>
+                                            <h4>Album Errors:</h4>
+                                            <div className="error-list">
+                                                {completionResult.errors.album_errors.map((error, index) => (
+                                                    <div key={index} className="error-item">{error}</div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            <button 
+                                className="action-button" 
+                                onClick={() => setCompletionResult(null)}
+                                style={{marginTop: '20px'}}
+                            >
+                                Close
+                            </button>
                         </div>
                     </div>
                 );
@@ -554,9 +651,17 @@
                         </div>
                     </div>
 
-                    <button className="rescan-button" onClick={startRescan}>
-                        Rescan
-                    </button>
+                    <div className="action-buttons">
+                        <button className="action-button" onClick={startDescribePhotos}>
+                            Describe Photos
+                        </button>
+                        <button className="action-button secondary" onClick={startDescribeAllAlbums}>
+                            Describe All Albums
+                        </button>
+                        <button className="action-button tertiary" onClick={startRetryAlbumFailures}>
+                            Retry Album Failures
+                        </button>
+                    </div>
 
                     <div className="filmstrip">
                         {photos.map((photo, index) => (

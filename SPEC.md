@@ -21,7 +21,7 @@ The application will be a self-contained Golang binary with an embedded React si
     *   This summary will be synthesized from the descriptions of all the photos contained within that album.
     *   The summary will also include a synopsis of the capture dates of the photos in the album.
     *   After the generated description, the text "The album contains photos from dates X to Y." will be appended, where X and Y are calculated based on the `taken_at` field for each photo, or the `created_at` timestamp for photos where `taken_at` is null.
-*   **Storage of Descriptions:** Generated descriptions for both photos and albums will be stored in the database in two nullable columns: `_ai_description` (TEXT) and `_ai_description_ts` (TIMESTAMP).
+*   **Storage of Descriptions:** Generated descriptions for photos will be stored in the `photos` table, and album descriptions will be stored in the `base_albums` table, in two nullable columns: `_ai_description` (TEXT) and `_ai_description_ts` (TIMESTAMP/DATETIME).
 *   **Description Regeneration:** The application will not regenerate a description for a photo that already has one. Album descriptions will be regenerated for all top-level albums when the user clicks the "Rescan" button.
 
 #### 2.2. Intelligent Photo Sorting
@@ -75,9 +75,38 @@ The application will feature a single-page React UI with the following component
 
 The application will interact with the following tables in the user's MySQL database.
 
-#### 5.1. `albums` Table
+#### 5.1. `base_albums` Table
 
-This table stores information about the photo albums.
+This table is the primary source of truth for album information and stores all albums in the Lychee installation.
+
+```sql
+CREATE TABLE `base_albums` (
+  `id` char(24) NOT NULL,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) NOT NULL,
+  `published_at` datetime DEFAULT NULL,
+  `title` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
+  `owner_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `is_nsfw` tinyint(1) NOT NULL DEFAULT 0,
+  `is_pinned` tinyint(1) NOT NULL DEFAULT 0,
+  `sorting_col` varchar(30) DEFAULT NULL,
+  `sorting_order` varchar(4) DEFAULT NULL,
+  `copyright` varchar(300) DEFAULT NULL,
+  `photo_layout` varchar(20) DEFAULT NULL,
+  `photo_timeline` varchar(20) DEFAULT NULL,
+  `_ai_description` TEXT DEFAULT NULL,
+  `_ai_description_ts` DATETIME(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `base_albums_owner_id_index` (`owner_id`),
+  KEY `base_albums_published_at_index` (`published_at`),
+  CONSTRAINT `base_albums_owner_id_foreign` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+```
+
+#### 5.2. `albums` Table
+
+This table stores hierarchical information for albums and is used only to determine parent-child relationships. Not all albums in `base_albums` have entries in this table.
 
 ```sql
 CREATE TABLE `albums` (
@@ -103,7 +132,7 @@ CREATE TABLE `albums` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 ```
 
-#### 5.2. `photos` Table
+#### 5.3. `photos` Table
 
 This table contains the details of each individual photo.
 
@@ -161,7 +190,7 @@ CREATE TABLE `photos` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 ```
 
-#### 5.3. `photo_album` Table
+#### 5.4. `photo_album` Table
 
 This is a junction table that manages the many-to-many relationship between photos and albums.
 
@@ -178,7 +207,7 @@ CREATE TABLE `photo_album` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 ```
 
-#### 5.4. `size_variants` Table
+#### 5.5. `size_variants` Table
 
 This table stores multiple size variants for each photo, which the application uses to fetch image files for AI analysis.
 
@@ -202,16 +231,16 @@ CREATE TABLE `size_variants` (
 
 The application queries this table to find appropriate image variants for AI analysis, preferring Medium variants (type=2) over Original variants (type=0).
 
-#### 5.5. Schema Modifications
+#### 5.6. Schema Modifications
 
-To support the AI-powered features, the following columns must be added to the `albums` and `photos` tables. The application will not perform these migrations; they must be applied by the user beforehand.
+To support the AI-powered features, the following columns must be added to the `base_albums` and `photos` tables. The application will not perform these migrations; they must be applied by the user beforehand.
 
-**`albums` table modifications:**
+**`base_albums` table modifications:**
 
 ```sql
-ALTER TABLE `albums`
+ALTER TABLE `base_albums`
 ADD COLUMN `_ai_description` TEXT DEFAULT NULL,
-ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
+ADD COLUMN `_ai_description_ts` DATETIME(6) DEFAULT NULL;
 ```
 
 **`photos` table modifications:**
@@ -221,6 +250,8 @@ ALTER TABLE `photos`
 ADD COLUMN `_ai_description` TEXT DEFAULT NULL,
 ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
 ```
+
+**Note:** The `base_albums` table serves as the primary source of truth for all album data, including AI descriptions. The `albums` table is only used to determine parent-child relationships between albums. Top-level albums are those that either have no entry in the `albums` table or have `parent_id` set to NULL.
 
 ### 6. Out of Scope
 
