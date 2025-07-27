@@ -67,17 +67,42 @@ func (db *DB) buildBlocklistCondition() (string, []interface{}) {
 	return condition, args
 }
 
+// scanPhoto scans a database row into a Photo struct
+func scanPhoto(rows *sql.Rows) (*Photo, error) {
+	var photo Photo
+	err := rows.Scan(
+		&photo.ID, &photo.CreatedAt, &photo.UpdatedAt, &photo.OwnerID,
+		&photo.OldAlbumID, &photo.Title, &photo.Description, &photo.Tags,
+		&photo.License, &photo.IsStarred, &photo.ISO, &photo.Make, &photo.Model,
+		&photo.Lens, &photo.Aperture, &photo.Shutter, &photo.Focal,
+		&photo.Latitude, &photo.Longitude, &photo.Altitude, &photo.ImgDirection,
+		&photo.Location, &photo.TakenAt, &photo.TakenAtOrigTz, &photo.InitialTakenAt,
+		&photo.InitialTakenAtOrigTz, &photo.Type, &photo.Filesize, &photo.Checksum,
+		&photo.OriginalChecksum, &photo.LivePhotoShortPath, &photo.LivePhotoContentID,
+		&photo.LivePhotoChecksum, &photo.AIDescription, &photo.AIDescriptionTimestamp,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &photo, nil
+}
+
+// photoSelectColumns returns the standard photo columns for SELECT queries
+func photoSelectColumns() string {
+	return `id, created_at, updated_at, owner_id, old_album_id, title, description, 
+	        tags, license, is_starred, iso, make, model, lens, aperture, shutter, 
+	        focal, latitude, longitude, altitude, img_direction, location, taken_at, 
+	        taken_at_orig_tz, initial_taken_at, initial_taken_at_orig_tz, type, 
+	        filesize, checksum, original_checksum, live_photo_short_path, 
+	        live_photo_content_id, live_photo_checksum, _ai_description, _ai_description_ts`
+}
+
 func (db *DB) GetUnsortedPhotos() ([]Photo, error) {
-	query := `
-		SELECT id, created_at, updated_at, owner_id, old_album_id, title, description, 
-		       tags, license, is_starred, iso, make, model, lens, aperture, shutter, 
-		       focal, latitude, longitude, altitude, img_direction, location, taken_at, 
-		       taken_at_orig_tz, initial_taken_at, initial_taken_at_orig_tz, type, 
-		       filesize, checksum, original_checksum, live_photo_short_path, 
-		       live_photo_content_id, live_photo_checksum, _ai_description, _ai_description_ts
+	query := fmt.Sprintf(`
+		SELECT %s
 		FROM photos 
 		WHERE id NOT IN (SELECT photo_id FROM photo_album)
-		ORDER BY taken_at DESC, created_at DESC`
+		ORDER BY taken_at DESC, created_at DESC`, photoSelectColumns())
 
 	rows, err := db.conn.Query(query)
 	if err != nil {
@@ -87,22 +112,11 @@ func (db *DB) GetUnsortedPhotos() ([]Photo, error) {
 
 	var photos []Photo
 	for rows.Next() {
-		var photo Photo
-		err := rows.Scan(
-			&photo.ID, &photo.CreatedAt, &photo.UpdatedAt, &photo.OwnerID,
-			&photo.OldAlbumID, &photo.Title, &photo.Description, &photo.Tags,
-			&photo.License, &photo.IsStarred, &photo.ISO, &photo.Make, &photo.Model,
-			&photo.Lens, &photo.Aperture, &photo.Shutter, &photo.Focal,
-			&photo.Latitude, &photo.Longitude, &photo.Altitude, &photo.ImgDirection,
-			&photo.Location, &photo.TakenAt, &photo.TakenAtOrigTz, &photo.InitialTakenAt,
-			&photo.InitialTakenAtOrigTz, &photo.Type, &photo.Filesize, &photo.Checksum,
-			&photo.OriginalChecksum, &photo.LivePhotoShortPath, &photo.LivePhotoContentID,
-			&photo.LivePhotoChecksum, &photo.AIDescription, &photo.AIDescriptionTimestamp,
-		)
+		photo, err := scanPhoto(rows)
 		if err != nil {
 			return nil, err
 		}
-		photos = append(photos, photo)
+		photos = append(photos, *photo)
 	}
 
 	return photos, rows.Err()
@@ -164,16 +178,11 @@ func (db *DB) GetPhotosWithoutAIDescription() ([]Photo, error) {
 		blocklistCondition = fmt.Sprintf(" AND id NOT IN (SELECT photo_id FROM photo_album WHERE album_id IN (%s))", strings.Join(placeholders, ","))
 	}
 	
-	query := `
-		SELECT id, created_at, updated_at, owner_id, old_album_id, title, description, 
-		       tags, license, is_starred, iso, make, model, lens, aperture, shutter, 
-		       focal, latitude, longitude, altitude, img_direction, location, taken_at, 
-		       taken_at_orig_tz, initial_taken_at, initial_taken_at_orig_tz, type, 
-		       filesize, checksum, original_checksum, live_photo_short_path, 
-		       live_photo_content_id, live_photo_checksum, _ai_description, _ai_description_ts
+	query := fmt.Sprintf(`
+		SELECT %s
 		FROM photos 
-		WHERE _ai_description IS NULL` + blocklistCondition + `
-		ORDER BY taken_at DESC, created_at DESC`
+		WHERE _ai_description IS NULL%s
+		ORDER BY taken_at DESC, created_at DESC`, photoSelectColumns(), blocklistCondition)
 
 	rows, err := db.conn.Query(query, blocklistArgs...)
 	if err != nil {
@@ -183,22 +192,11 @@ func (db *DB) GetPhotosWithoutAIDescription() ([]Photo, error) {
 
 	var photos []Photo
 	for rows.Next() {
-		var photo Photo
-		err := rows.Scan(
-			&photo.ID, &photo.CreatedAt, &photo.UpdatedAt, &photo.OwnerID,
-			&photo.OldAlbumID, &photo.Title, &photo.Description, &photo.Tags,
-			&photo.License, &photo.IsStarred, &photo.ISO, &photo.Make, &photo.Model,
-			&photo.Lens, &photo.Aperture, &photo.Shutter, &photo.Focal,
-			&photo.Latitude, &photo.Longitude, &photo.Altitude, &photo.ImgDirection,
-			&photo.Location, &photo.TakenAt, &photo.TakenAtOrigTz, &photo.InitialTakenAt,
-			&photo.InitialTakenAtOrigTz, &photo.Type, &photo.Filesize, &photo.Checksum,
-			&photo.OriginalChecksum, &photo.LivePhotoShortPath, &photo.LivePhotoContentID,
-			&photo.LivePhotoChecksum, &photo.AIDescription, &photo.AIDescriptionTimestamp,
-		)
+		photo, err := scanPhoto(rows)
 		if err != nil {
 			return nil, err
 		}
-		photos = append(photos, photo)
+		photos = append(photos, *photo)
 	}
 
 	return photos, rows.Err()
@@ -270,58 +268,29 @@ func (db *DB) UpdateAlbumAIDescription(albumID, description string) error {
 }
 
 func (db *DB) GetPhotosInAlbum(albumID string) ([]Photo, error) {
-	log.Printf("Starting GetPhotosInAlbum for album %s", albumID)
-	
-	query := `
-		SELECT p.id, p.created_at, p.updated_at, p.owner_id, p.old_album_id, p.title, p.description, 
-		       p.tags, p.license, p.is_starred, p.iso, p.make, p.model, p.lens, p.aperture, p.shutter, 
-		       p.focal, p.latitude, p.longitude, p.altitude, p.img_direction, p.location, p.taken_at, 
-		       p.taken_at_orig_tz, p.initial_taken_at, p.initial_taken_at_orig_tz, p.type, 
-		       p.filesize, p.checksum, p.original_checksum, p.live_photo_short_path, 
-		       p.live_photo_content_id, p.live_photo_checksum, p._ai_description, p._ai_description_ts
+	query := fmt.Sprintf(`
+		SELECT %s
 		FROM photos p
 		INNER JOIN photo_album pa ON p.id = pa.photo_id
 		WHERE pa.album_id = ?
-		ORDER BY p.taken_at DESC, p.created_at DESC`
+		ORDER BY p.taken_at DESC, p.created_at DESC`, 
+		strings.ReplaceAll(photoSelectColumns(), "id,", "p.id,"))
 
-	log.Printf("Executing query for album %s", albumID)
 	rows, err := db.conn.Query(query, albumID)
 	if err != nil {
-		log.Printf("Query failed for album %s: %v", albumID, err)
 		return nil, err
 	}
 	defer rows.Close()
-	
-	log.Printf("Query successful for album %s, processing rows...", albumID)
 
 	var photos []Photo
-	photoCount := 0
 	for rows.Next() {
-		photoCount++
-		log.Printf("Processing photo %d for album %s", photoCount, albumID)
-		
-		var photo Photo
-		err := rows.Scan(
-			&photo.ID, &photo.CreatedAt, &photo.UpdatedAt, &photo.OwnerID,
-			&photo.OldAlbumID, &photo.Title, &photo.Description, &photo.Tags,
-			&photo.License, &photo.IsStarred, &photo.ISO, &photo.Make, &photo.Model,
-			&photo.Lens, &photo.Aperture, &photo.Shutter, &photo.Focal,
-			&photo.Latitude, &photo.Longitude, &photo.Altitude, &photo.ImgDirection,
-			&photo.Location, &photo.TakenAt, &photo.TakenAtOrigTz, &photo.InitialTakenAt,
-			&photo.InitialTakenAtOrigTz, &photo.Type, &photo.Filesize, &photo.Checksum,
-			&photo.OriginalChecksum, &photo.LivePhotoShortPath, &photo.LivePhotoContentID,
-			&photo.LivePhotoChecksum, &photo.AIDescription, &photo.AIDescriptionTimestamp,
-		)
+		photo, err := scanPhoto(rows)
 		if err != nil {
-			log.Printf("Error scanning photo %d for album %s: %v", photoCount, albumID, err)
 			return nil, err
 		}
-		
-		log.Printf("Successfully scanned photo %s (%s) for album %s", photo.ID, photo.Title, albumID)
-		photos = append(photos, photo)
+		photos = append(photos, *photo)
 	}
 
-	log.Printf("Completed GetPhotosInAlbum for album %s: found %d photos", albumID, len(photos))
 	return photos, rows.Err()
 }
 
@@ -351,22 +320,17 @@ func (db *DB) GetAllPhotosWithoutAIDescription() ([]Photo, error) {
 		blocklistExclude = fmt.Sprintf(" AND id NOT IN (SELECT photo_id FROM photo_album WHERE album_id IN (%s))", strings.Join(placeholders, ","))
 	}
 	
-	query := `
-		SELECT id, created_at, updated_at, owner_id, old_album_id, title, description, 
-		       tags, license, is_starred, iso, make, model, lens, aperture, shutter, 
-		       focal, latitude, longitude, altitude, img_direction, location, taken_at, 
-		       taken_at_orig_tz, initial_taken_at, initial_taken_at_orig_tz, type, 
-		       filesize, checksum, original_checksum, live_photo_short_path, 
-		       live_photo_content_id, live_photo_checksum, _ai_description, _ai_description_ts
+	query := fmt.Sprintf(`
+		SELECT %s
 		FROM photos 
 		WHERE _ai_description IS NULL AND (
 			id NOT IN (SELECT photo_id FROM photo_album) OR 
 			id IN (SELECT DISTINCT pa.photo_id FROM photo_album pa 
 				   JOIN base_albums ba ON pa.album_id = ba.id 
 				   LEFT JOIN albums a ON ba.id = a.id 
-				   WHERE (a.parent_id IS NULL OR a.id IS NULL)` + blocklistCondition + `)
-		)` + blocklistExclude + `
-		ORDER BY taken_at DESC, created_at DESC`
+				   WHERE (a.parent_id IS NULL OR a.id IS NULL)%s)
+		)%s
+		ORDER BY taken_at DESC, created_at DESC`, photoSelectColumns(), blocklistCondition, blocklistExclude)
 
 	rows, err := db.conn.Query(query, allArgs...)
 	if err != nil {
@@ -376,22 +340,11 @@ func (db *DB) GetAllPhotosWithoutAIDescription() ([]Photo, error) {
 
 	var photos []Photo
 	for rows.Next() {
-		var photo Photo
-		err := rows.Scan(
-			&photo.ID, &photo.CreatedAt, &photo.UpdatedAt, &photo.OwnerID,
-			&photo.OldAlbumID, &photo.Title, &photo.Description, &photo.Tags,
-			&photo.License, &photo.IsStarred, &photo.ISO, &photo.Make, &photo.Model,
-			&photo.Lens, &photo.Aperture, &photo.Shutter, &photo.Focal,
-			&photo.Latitude, &photo.Longitude, &photo.Altitude, &photo.ImgDirection,
-			&photo.Location, &photo.TakenAt, &photo.TakenAtOrigTz, &photo.InitialTakenAt,
-			&photo.InitialTakenAtOrigTz, &photo.Type, &photo.Filesize, &photo.Checksum,
-			&photo.OriginalChecksum, &photo.LivePhotoShortPath, &photo.LivePhotoContentID,
-			&photo.LivePhotoChecksum, &photo.AIDescription, &photo.AIDescriptionTimestamp,
-		)
+		photo, err := scanPhoto(rows)
 		if err != nil {
 			return nil, err
 		}
-		photos = append(photos, photo)
+		photos = append(photos, *photo)
 	}
 
 	return photos, rows.Err()

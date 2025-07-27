@@ -31,8 +31,8 @@ This application helps organize an existing photo library into albums using arti
 Add AI description columns to your Lychee database:
 
 ```sql
--- Add AI description columns to albums table
-ALTER TABLE `albums`
+-- Add AI description columns to base_albums table
+ALTER TABLE `base_albums`
 ADD COLUMN `_ai_description` TEXT DEFAULT NULL,
 ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
 
@@ -92,7 +92,7 @@ ollama pull qwen3:8b          # For description synthesis
 
 #### Ollama Performance Options
 
-- `context_window`: Maximum context length (recommended: 40960)
+- `context_window`: Maximum context length (recommended for `qwen3:8b`: 40960)
 - `temperature`: Sampling temperature (0.0-1.0)
 - `top_p`: Top-p sampling (0.0-1.0)
 - `options`: Additional Ollama parameters
