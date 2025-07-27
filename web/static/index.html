@@ -300,30 +300,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        .toast {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background-color: #4CAF50;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 4px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-            z-index: 1000;
-            font-weight: 500;
-            animation: slideIn 0.3s ease-out;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
 
         .error-summary {
             background-color: #2a2a2a;
@@ -379,19 +355,7 @@
             const [progress, setProgress] = useState(null);
             const [completionResult, setCompletionResult] = useState(null);
             const [ws, setWs] = useState(null);
-            const [toastMessage, setToastMessage] = useState(null);
-
             const currentPhoto = photos[currentPhotoIndex];
-
-            // Auto-hide toast after 3 seconds
-            useEffect(() => {
-                if (toastMessage) {
-                    const timer = setTimeout(() => {
-                        setToastMessage(null);
-                    }, 3000);
-                    return () => clearTimeout(timer);
-                }
-            }, [toastMessage]);
 
             useEffect(() => {
                 loadPhotos();
@@ -416,12 +380,12 @@
                 }
             }, [currentPhoto]);
 
-            // Preload suggestions for visible thumbnails
+            // Preload suggestions when current photo changes
             useEffect(() => {
-                if (photos.length > 0) {
-                    preloadVisibleSuggestions();
+                if (photos.length > 0 && currentPhotoIndex >= 0) {
+                    preloadSurroundingSuggestions(currentPhotoIndex);
                 }
-            }, [photos]);
+            }, [currentPhotoIndex, photos.length]);
 
             // Add keyboard navigation
             useEffect(() => {
@@ -436,14 +400,12 @@
                             event.preventDefault();
                             if (currentPhotoIndex > 0) {
                                 setCurrentPhotoIndex(currentPhotoIndex - 1);
-                                setTimeout(preloadVisibleSuggestions, 100);
                             }
                             break;
                         case 'ArrowRight':
                             event.preventDefault();
                             if (currentPhotoIndex < photos.length - 1) {
                                 setCurrentPhotoIndex(currentPhotoIndex + 1);
-                                setTimeout(preloadVisibleSuggestions, 100);
                             }
                             break;
                     }
@@ -455,7 +417,7 @@
                 return () => {
                     document.removeEventListener('keydown', handleKeyDown);
                 };
-            }, [currentPhotoIndex, photos.length, preloadVisibleSuggestions]);
+            }, [currentPhotoIndex, photos.length]);
 
             const initWebSocket = () => {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -585,17 +547,36 @@
                 }
             };
 
-            const preloadVisibleSuggestions = () => {
-                // Get visible thumbnails (simple approach: preload a few around current photo)
-                const startIndex = Math.max(0, currentPhotoIndex - 2);
-                const endIndex = Math.min(photos.length, currentPhotoIndex + 3);
+            const preloadSurroundingSuggestions = (centerIndex) => {
+                // Get photos in range: 2 to left, 4 to right
+                const leftStart = Math.max(0, centerIndex - 2);
+                const rightEnd = Math.min(photos.length, centerIndex + 5); // +5 because centerIndex + 4 inclusive
                 
-                for (let i = startIndex; i < endIndex; i++) {
+                const photosToPreload = [];
+                
+                // Add photos to the left (excluding center)
+                for (let i = leftStart; i < centerIndex; i++) {
                     if (photos[i] && !suggestionsCache.has(photos[i].id) && !loadingStates.get(photos[i].id)) {
-                        // Add delay to avoid overwhelming the server
-                        setTimeout(() => preloadSuggestions(photos[i].id), 5000 + (i - startIndex) * 100);
+                        photosToPreload.push(photos[i].id);
                     }
                 }
+                
+                // Add photos to the right (excluding center)
+                for (let i = centerIndex + 1; i < rightEnd; i++) {
+                    if (photos[i] && !suggestionsCache.has(photos[i].id) && !loadingStates.get(photos[i].id)) {
+                        photosToPreload.push(photos[i].id);
+                    }
+                }
+                
+                // Queue preload requests with 2-second delays
+                photosToPreload.forEach((photoId, index) => {
+                    setTimeout(() => {
+                        // Double-check that we still need to preload this photo
+                        if (!suggestionsCache.has(photoId) && !loadingStates.get(photoId)) {
+                            preloadSuggestions(photoId);
+                        }
+                    }, (index + 1) * 2000); // 2 second delay between requests
+                });
             };
 
             const movePhoto = async (albumId) => {
@@ -639,16 +620,12 @@
             const nextPhoto = () => {
                 if (currentPhotoIndex < photos.length - 1) {
                     setCurrentPhotoIndex(currentPhotoIndex + 1);
-                    // Trigger preloading for newly visible photos
-                    setTimeout(preloadVisibleSuggestions, 100);
                 }
             };
 
             const prevPhoto = () => {
                 if (currentPhotoIndex > 0) {
                     setCurrentPhotoIndex(currentPhotoIndex - 1);
-                    // Trigger preloading for newly visible photos
-                    setTimeout(preloadVisibleSuggestions, 100);
                 }
             };
 
@@ -813,21 +790,11 @@
                                 src={photo.thumbnail}
                                 alt={photo.title}
                                 className={`thumbnail ${index === currentPhotoIndex ? 'active' : ''}`}
-                                onClick={() => {
-                                    setCurrentPhotoIndex(index);
-                                    setTimeout(preloadVisibleSuggestions, 100);
-                                }}
+                                onClick={() => setCurrentPhotoIndex(index)}
                                 loading="lazy"
                             />
                         ))}
                     </div>
-                    
-                    {/* Toast notification */}
-                    {toastMessage && (
-                        <div className="toast">
-                            {toastMessage}
-                        </div>
-                    )}
                 </div>
             );
         }
