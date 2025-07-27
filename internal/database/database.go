@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"log"
 	"lychee-ai-organizer/internal/config"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
 type DB struct {
 	conn *sql.DB
+	blocklist map[string]bool
 }
 
-func NewDB(cfg *config.DatabaseConfig) (*DB, error) {
+func NewDB(cfg *config.DatabaseConfig, albumBlocklist []string) (*DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
 		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 	
@@ -26,7 +28,13 @@ func NewDB(cfg *config.DatabaseConfig) (*DB, error) {
 		return nil, err
 	}
 
-	return &DB{conn: conn}, nil
+	// Convert blocklist to map for faster lookups
+	blocklist := make(map[string]bool)
+	for _, albumID := range albumBlocklist {
+		blocklist[albumID] = true
+	}
+
+	return &DB{conn: conn, blocklist: blocklist}, nil
 }
 
 func (db *DB) Close() error {
@@ -35,6 +43,27 @@ func (db *DB) Close() error {
 
 func (db *DB) GetDB() *sql.DB {
 	return db.conn
+}
+
+func (db *DB) IsAlbumBlocked(albumID string) bool {
+	return db.blocklist[albumID]
+}
+
+func (db *DB) buildBlocklistCondition() (string, []interface{}) {
+	if len(db.blocklist) == 0 {
+		return "", nil
+	}
+	
+	placeholders := make([]string, 0, len(db.blocklist))
+	args := make([]interface{}, 0, len(db.blocklist))
+	
+	for albumID := range db.blocklist {
+		placeholders = append(placeholders, "?")
+		args = append(args, albumID)
+	}
+	
+	condition := fmt.Sprintf(" AND ba.id NOT IN (%s)", strings.Join(placeholders, ","))
+	return condition, args
 }
 
 func (db *DB) GetUnsortedPhotos() ([]Photo, error) {
@@ -79,6 +108,8 @@ func (db *DB) GetUnsortedPhotos() ([]Photo, error) {
 }
 
 func (db *DB) GetTopLevelAlbums() ([]Album, error) {
+	blocklistCondition, blocklistArgs := db.buildBlocklistCondition()
+	
 	query := `
 		SELECT ba.id, ba.created_at, ba.updated_at, ba.published_at, ba.title, ba.description,
 		       ba.owner_id, ba.is_nsfw, ba.is_pinned, ba.sorting_col, ba.sorting_order,
@@ -86,10 +117,10 @@ func (db *DB) GetTopLevelAlbums() ([]Album, error) {
 		       ba._ai_description, ba._ai_description_ts
 		FROM base_albums ba
 		LEFT JOIN albums a ON ba.id = a.id
-		WHERE a.parent_id IS NULL OR a.id IS NULL
+		WHERE (a.parent_id IS NULL OR a.id IS NULL)` + blocklistCondition + `
 		ORDER BY ba.title`
 
-	rows, err := db.conn.Query(query)
+	rows, err := db.conn.Query(query, blocklistArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +146,18 @@ func (db *DB) GetTopLevelAlbums() ([]Album, error) {
 }
 
 func (db *DB) GetPhotosWithoutAIDescription() ([]Photo, error) {
+	blocklistCondition := ""
+	var blocklistArgs []interface{}
+	
+	if len(db.blocklist) > 0 {
+		placeholders := make([]string, 0, len(db.blocklist))
+		for albumID := range db.blocklist {
+			placeholders = append(placeholders, "?")
+			blocklistArgs = append(blocklistArgs, albumID)
+		}
+		blocklistCondition = fmt.Sprintf(" AND id NOT IN (SELECT photo_id FROM photo_album WHERE album_id IN (%s))", strings.Join(placeholders, ","))
+	}
+	
 	query := `
 		SELECT id, created_at, updated_at, owner_id, old_album_id, title, description, 
 		       tags, license, is_starred, iso, make, model, lens, aperture, shutter, 
@@ -123,10 +166,10 @@ func (db *DB) GetPhotosWithoutAIDescription() ([]Photo, error) {
 		       filesize, checksum, original_checksum, live_photo_short_path, 
 		       live_photo_content_id, live_photo_checksum, _ai_description, _ai_description_ts
 		FROM photos 
-		WHERE _ai_description IS NULL
+		WHERE _ai_description IS NULL` + blocklistCondition + `
 		ORDER BY taken_at DESC, created_at DESC`
 
-	rows, err := db.conn.Query(query)
+	rows, err := db.conn.Query(query, blocklistArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +199,8 @@ func (db *DB) GetPhotosWithoutAIDescription() ([]Photo, error) {
 }
 
 func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
+	blocklistCondition, blocklistArgs := db.buildBlocklistCondition()
+	
 	query := `
 		SELECT ba.id, ba.created_at, ba.updated_at, ba.published_at, ba.title, ba.description,
 		       ba.owner_id, ba.is_nsfw, ba.is_pinned, ba.sorting_col, ba.sorting_order,
@@ -163,10 +208,10 @@ func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
 		       ba._ai_description, ba._ai_description_ts
 		FROM base_albums ba
 		LEFT JOIN albums a ON ba.id = a.id
-		WHERE (a.parent_id IS NULL OR a.id IS NULL) AND ba._ai_description IS NULL
+		WHERE (a.parent_id IS NULL OR a.id IS NULL) AND ba._ai_description IS NULL` + blocklistCondition + `
 		ORDER BY ba.title`
 
-	rows, err := db.conn.Query(query)
+	rows, err := db.conn.Query(query, blocklistArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +321,25 @@ func (db *DB) MovePhotoToAlbum(photoID, albumID string) error {
 }
 
 func (db *DB) GetAllPhotosWithoutAIDescription() ([]Photo, error) {
+	blocklistCondition := ""
+	blocklistExclude := ""
+	var allArgs []interface{}
+	
+	if len(db.blocklist) > 0 {
+		placeholders := make([]string, 0, len(db.blocklist))
+		for albumID := range db.blocklist {
+			placeholders = append(placeholders, "?")
+			allArgs = append(allArgs, albumID)
+		}
+		blocklistCondition = fmt.Sprintf(" AND ba.id NOT IN (%s)", strings.Join(placeholders, ","))
+		
+		// Add second set of args for the second exclusion
+		for albumID := range db.blocklist {
+			allArgs = append(allArgs, albumID)
+		}
+		blocklistExclude = fmt.Sprintf(" AND id NOT IN (SELECT photo_id FROM photo_album WHERE album_id IN (%s))", strings.Join(placeholders, ","))
+	}
+	
 	query := `
 		SELECT id, created_at, updated_at, owner_id, old_album_id, title, description, 
 		       tags, license, is_starred, iso, make, model, lens, aperture, shutter, 
@@ -289,11 +353,11 @@ func (db *DB) GetAllPhotosWithoutAIDescription() ([]Photo, error) {
 			id IN (SELECT DISTINCT pa.photo_id FROM photo_album pa 
 				   JOIN base_albums ba ON pa.album_id = ba.id 
 				   LEFT JOIN albums a ON ba.id = a.id 
-				   WHERE a.parent_id IS NULL OR a.id IS NULL)
-		)
+				   WHERE (a.parent_id IS NULL OR a.id IS NULL)` + blocklistCondition + `)
+		)` + blocklistExclude + `
 		ORDER BY taken_at DESC, created_at DESC`
 
-	rows, err := db.conn.Query(query)
+	rows, err := db.conn.Query(query, allArgs...)
 	if err != nil {
 		return nil, err
 	}

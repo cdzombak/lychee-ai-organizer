@@ -41,7 +41,7 @@ func (app *App) Run() error {
 	app.config = cfg
 
 	// Initialize database
-	db, err := database.NewDB(&cfg.Database)
+	db, err := database.NewDB(&cfg.Database, cfg.AlbumBlocklist)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}

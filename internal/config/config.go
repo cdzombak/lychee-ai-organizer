@@ -13,6 +13,7 @@ type Config struct {
 	Ollama   OllamaConfig   `json:"ollama"`
 	Server   ServerConfig   `json:"server"`
 	Lychee   LycheeConfig   `json:"lychee"`
+	AlbumBlocklist []string `json:"album_blocklist,omitempty"`
 }
 
 type DatabaseConfig struct {

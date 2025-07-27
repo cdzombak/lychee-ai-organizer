@@ -10,6 +10,7 @@ This application helps organize an existing photo library into albums using arti
 - **Real-time Progress Updates**: WebSocket-based progress tracking during AI analysis
 - **Single Binary**: Self-contained Go binary with embedded React frontend
 - **Suggestion Caching**: Avoids redundant AI generation across application runs
+- **Album Blocklist**: Exclude specific albums from AI processing and suggestions
 
 ## Prerequisites
 
@@ -67,9 +68,15 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
      "server": {
        "host": "localhost",
        "port": 8080
-     }
+     },
+     "album_blocklist": ["album-id-1", "album-id-2"]
    }
    ```
+
+3. **Album Blocklist (Optional)**: Add album IDs to the `album_blocklist` array to exclude them from:
+   - AI description generation (both albums and their photos)
+   - Album suggestions for unsorted photos
+   - Progress tracking during rescan operations
 
 ## Building and Running
 
