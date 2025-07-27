@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"lychee-ai-organizer/internal/cache"
 	"lychee-ai-organizer/internal/database"
 	"lychee-ai-organizer/internal/images"
 	"lychee-ai-organizer/internal/ollama"
@@ -16,7 +15,6 @@ import (
 type Server struct {
 	db           *database.DB
 	ollama       *ollama.Client
-	cache        *cache.Cache
 	imageFetcher *images.Fetcher
 	mux          *http.ServeMux
 }
@@ -45,11 +43,10 @@ type MovePhotoRequest struct {
 	AlbumID string `json:"album_id"`
 }
 
-func NewServer(db *database.DB, ollamaClient *ollama.Client, cacheClient *cache.Cache, imageFetcher *images.Fetcher) *Server {
+func NewServer(db *database.DB, ollamaClient *ollama.Client, imageFetcher *images.Fetcher) *Server {
 	s := &Server{
 		db:           db,
 		ollama:       ollamaClient,
-		cache:        cacheClient,
 		imageFetcher: imageFetcher,
 		mux:          http.NewServeMux(),
 	}
@@ -63,7 +60,6 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/photos/unsorted", s.handleUnsortedPhotos)
 	s.mux.HandleFunc("/api/photos/suggestions", s.handlePhotoSuggestions)
 	s.mux.HandleFunc("/api/photos/move", s.handleMovePhoto)
-	s.mux.HandleFunc("/api/cache/purge", s.handlePurgeCache)
 	s.mux.HandleFunc("/api/rescan", s.handleRescan)
 	s.mux.HandleFunc("/", s.handleStatic)
 }
@@ -152,59 +148,44 @@ func (s *Server) handlePhotoSuggestions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	suggestions, cached := s.cache.Get(photoID)
-	if !cached {
-		// Generate suggestions
-		albums, err := s.db.GetTopLevelAlbums()
-		if err != nil {
-			log.Printf("Error getting albums: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		log.Printf("Found %d top-level albums", len(albums))
-
-		photos, err := s.db.GetUnsortedPhotos()
-		if err != nil {
-			log.Printf("Error getting photos: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		var targetPhoto *database.Photo
-		for _, photo := range photos {
-			if photo.ID == photoID {
-				targetPhoto = &photo
-				break
-			}
-		}
-
-		if targetPhoto == nil {
-			log.Printf("Photo not found in unsorted photos: %s", photoID)
-			http.Error(w, "Photo not found", http.StatusNotFound)
-			return
-		}
-
-		log.Printf("Generating suggestions for photo: %s", photoID)
-		suggestions, err = s.ollama.GenerateAlbumSuggestions(targetPhoto, albums)
-		if err != nil {
-			log.Printf("Error generating suggestions: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		log.Printf("Generated %d suggestions: %v", len(suggestions), suggestions)
-
-		s.cache.Set(photoID, suggestions)
-		s.cache.Save()
-	} else {
-		log.Printf("Using cached suggestions for photo %s: %v", photoID, suggestions)
-	}
-
+	// Generate suggestions
 	albums, err := s.db.GetTopLevelAlbums()
 	if err != nil {
 		log.Printf("Error getting albums: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	log.Printf("Found %d top-level albums", len(albums))
+
+	photos, err := s.db.GetUnsortedPhotos()
+	if err != nil {
+		log.Printf("Error getting photos: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var targetPhoto *database.Photo
+	for _, photo := range photos {
+		if photo.ID == photoID {
+			targetPhoto = &photo
+			break
+		}
+	}
+
+	if targetPhoto == nil {
+		log.Printf("Photo not found in unsorted photos: %s", photoID)
+		http.Error(w, "Photo not found", http.StatusNotFound)
+		return
+	}
+
+	log.Printf("Generating suggestions for photo: %s", photoID)
+	suggestions, err := s.ollama.GenerateAlbumSuggestions(targetPhoto, albums)
+	if err != nil {
+		log.Printf("Error generating suggestions: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Generated %d suggestions: %v", len(suggestions), suggestions)
 
 	albumMap := make(map[string]database.Album)
 	for _, album := range albums {
@@ -270,38 +251,6 @@ func (s *Server) handleMovePhoto(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-}
-
-func (s *Server) handlePurgeCache(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	photoID := r.URL.Query().Get("photo_id")
-	if photoID == "" {
-		http.Error(w, "photo_id parameter required", http.StatusBadRequest)
-		return
-	}
-
-	log.Printf("Purging suggestion cache for photo %s", photoID)
-
-	// Remove the specific photo from cache
-	s.cache.Remove(photoID)
-	
-	// Save the updated cache (this clears the entry from the JSON file)
-	if err := s.cache.Save(); err != nil {
-		log.Printf("Error saving cache after purge: %v", err)
-		// Don't fail the request, just log the error
-	}
-
-	log.Printf("Successfully purged cache for photo %s", photoID)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "cache purged for photo",
-		"message": "Cache cleared successfully",
-	})
 }
 
 func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {

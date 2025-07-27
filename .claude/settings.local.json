@@ -8,7 +8,8 @@
       "Bash(go mod:*)",
       "Bash(curl:*)",
       "Bash(rm:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

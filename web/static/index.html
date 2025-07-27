@@ -381,7 +381,6 @@
             const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
             const [suggestions, setSuggestions] = useState([]);
             const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-            const [suggestionsCache, setSuggestionsCache] = useState(new Map());
             const [loading, setLoading] = useState(true);
             const [progress, setProgress] = useState(null);
             const [completionResult, setCompletionResult] = useState(null);
@@ -511,12 +510,6 @@
             };
 
             const loadSuggestions = async (photoId) => {
-                // Check cache first
-                if (suggestionsCache.has(photoId)) {
-                    setSuggestions(suggestionsCache.get(photoId));
-                    return;
-                }
-
                 setSuggestionsLoading(true);
                 setSuggestions([]); // Clear previous suggestions immediately
                 try {
@@ -524,8 +517,6 @@
                     const data = await response.json();
                     const suggestions = data.albums || [];
                     
-                    // Cache the suggestions
-                    setSuggestionsCache(prev => new Map(prev).set(photoId, suggestions));
                     setSuggestions(suggestions);
                 } catch (error) {
                     console.error('Error loading suggestions:', error);
@@ -536,34 +527,13 @@
             };
 
             const preloadSuggestions = async (photoId) => {
-                // Skip if already cached or loading
-                if (suggestionsCache.has(photoId)) {
-                    return;
-                }
-
-                try {
-                    const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`);
-                    const data = await response.json();
-                    const suggestions = data.albums || [];
-                    
-                    // Cache the suggestions
-                    setSuggestionsCache(prev => new Map(prev).set(photoId, suggestions));
-                } catch (error) {
-                    console.error('Error preloading suggestions for photo', photoId, ':', error);
-                }
+                // Preloading disabled - suggestions are loaded on demand
+                return;
             };
 
             const preloadVisibleSuggestions = () => {
-                // Get visible thumbnails (simple approach: preload a few around current photo)
-                const startIndex = Math.max(0, currentPhotoIndex - 2);
-                const endIndex = Math.min(photos.length, currentPhotoIndex + 3);
-                
-                for (let i = startIndex; i < endIndex; i++) {
-                    if (photos[i] && !suggestionsCache.has(photos[i].id)) {
-                        // Add small delay to avoid overwhelming the server
-                        setTimeout(() => preloadSuggestions(photos[i].id), (i - startIndex) * 100);
-                    }
-                }
+                // Preloading disabled - suggestions are loaded on demand
+                return;
             };
 
             const movePhoto = async (albumId) => {
@@ -618,45 +588,6 @@
             const startDescribePhotos = () => startOperation('describe_photos');
             const startDescribeAllAlbums = () => startOperation('describe_all_albums');
             const startRetryAlbumFailures = () => startOperation('retry_album_failures');
-
-            const purgeCacheForCurrentPhoto = async () => {
-                if (!currentPhoto) return;
-                
-                // Clear suggestions immediately to remove recommended album buttons
-                setSuggestions([]);
-                
-                try {
-                    const response = await fetch(`/api/cache/purge?photo_id=${currentPhoto.id}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        
-                        // Remove from local cache
-                        setSuggestionsCache(prev => {
-                            const newCache = new Map(prev);
-                            newCache.delete(currentPhoto.id);
-                            return newCache;
-                        });
-                        
-                        // Show success toast
-                        setToastMessage(data.message || 'Cache cleared successfully');
-                        
-                        // Re-request suggestions for current photo
-                        loadSuggestions(currentPhoto.id);
-                    } else {
-                        console.error('Failed to purge cache:', response.statusText);
-                        setToastMessage('Failed to clear cache');
-                    }
-                } catch (error) {
-                    console.error('Error purging cache:', error);
-                    setToastMessage('Error clearing cache');
-                }
-            };
 
             if (progress) {
                 const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
@@ -798,13 +729,6 @@
                         </button>
                         <button className="action-button tertiary" onClick={startRetryAlbumFailures}>
                             Retry Album Failures
-                        </button>
-                        <button 
-                            className="action-button quaternary" 
-                            onClick={purgeCacheForCurrentPhoto}
-                            title="Purge cache and regenerate suggestions for current photo"
-                        >
-                            Purge Cache
                         </button>
                     </div>
 

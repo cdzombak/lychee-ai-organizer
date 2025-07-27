@@ -80,7 +80,7 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
 
 2. Run the application:
    ```bash
-   ./lychee-ai-organizer -config config.json -cache suggestions.json
+   ./lychee-ai-organizer -config config.json
    ```
 
 3. Open your browser to `http://localhost:8080`
@@ -105,7 +105,6 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
 - **Navigation**: Previous/Next buttons and thumbnail filmstrip
 - **Album Suggestions**: Three AI-generated suggestions per photo
 - **Real-time Updates**: Progress tracking during rescan operations
-- **Suggestion Caching**: Suggestions are cached to avoid regeneration
 
 ## File Structure
 
@@ -120,7 +119,6 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
 │   ├── ollama/              # Ollama API integration
 │   ├── api/                 # REST API endpoints
 │   ├── websocket/           # WebSocket handlers
-│   └── cache/               # Suggestion caching
 └── web/
     └── static/
         └── index.html        # React frontend (embedded)
@@ -159,7 +157,6 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
 
 - Image analysis is computationally intensive and may take time
 - Consider using smaller models for faster processing on limited hardware
-- The suggestion cache significantly improves performance on subsequent runs
 
 ## Security Considerations
 

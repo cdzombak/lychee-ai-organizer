@@ -28,7 +28,6 @@ The application will be a self-contained Golang binary with an embedded React si
 
 *   **Album Suggestions:** After all photos and top-level albums have descriptions, the application will generate album suggestions for each unsorted photo.
 *   **Suggestion Mechanism:** To generate suggestions, the application will query the Ollama endpoint, providing it with the description of the unsorted photo, the photo's date (`taken_at` or `created_at` if `taken_at` is null), and the descriptions of all top-level albums. The prompt will instruct Ollama to consider thematic similarity, subject matter, context, and temporal relevance when suggesting the top three most likely albums for the photo.
-*   **Suggestion Caching:** These album suggestions will be stored in a local cache file to avoid redundant generation on subsequent application runs. The path to this cache file will be configurable.
 
 ### 3. User Interface (UI)
 
@@ -58,9 +57,6 @@ The application will feature a single-page React UI with the following component
     *   The path to this configuration file will be specified using the `-config` command-line argument.
     *   The standard `encoding/json` package will be used for parsing the configuration file.
     *   **Lychee Integration:** The configuration must include the base URL of the Lychee installation for image fetching (e.g., "https://pictures.dzombak.com").
-*   **Caching:**
-    *   Album suggestions will be cached locally in a file specified by the `-cache` command-line argument.
-    *   Standard file I/O operations will be used to manage the cache file.
 *   **Web Server:** A lightweight web server will be implemented using Go's standard `net/http` package to serve the React application and handle API requests.
 *   **Real-time Communication:** WebSockets will be used for real-time updates to the UI during the initial analysis phase. The `gorilla/websocket` library is a suitable choice for this.
 

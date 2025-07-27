@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"lychee-ai-organizer/internal/api"
-	"lychee-ai-organizer/internal/cache"
 	"lychee-ai-organizer/internal/config"
 	"lychee-ai-organizer/internal/database"
 	"lychee-ai-organizer/internal/images"
@@ -21,18 +20,15 @@ var indexHTML []byte
 type App struct {
 	config     *config.Config
 	configPath string
-	cachePath  string
 	db         *database.DB
 	ollama     *ollama.Client
 	apiServer  *api.Server
 	wsHandler  *websocket.Handler
-	cache      *cache.Cache
 }
 
-func NewApp(configPath, cachePath string) *App {
+func NewApp(configPath string) *App {
 	return &App{
 		configPath: configPath,
-		cachePath:  cachePath,
 	}
 }
 
@@ -62,15 +58,8 @@ func (app *App) Run() error {
 	}
 	app.ollama = ollamaClient
 
-	// Initialize cache
-	cacheClient := cache.NewCache(app.cachePath)
-	if err := cacheClient.Load(); err != nil {
-		log.Printf("Warning: failed to load cache: %v", err)
-	}
-	app.cache = cacheClient
-
 	// Initialize API server
-	app.apiServer = api.NewServer(db, ollamaClient, cacheClient, imageFetcher)
+	app.apiServer = api.NewServer(db, ollamaClient, imageFetcher)
 
 	// Initialize WebSocket handler
 	app.wsHandler = websocket.NewHandler(db, ollamaClient)
