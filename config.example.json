@@ -19,5 +19,8 @@
   "lychee": {
     "base_url": "https://pictures.dzombak.com"
   },
-  "album_blocklist": ["album-id-1", "album-id-2"]
+  "albums": {
+    "blocklist": ["album-id-1", "album-id-2"],
+    "pinned_only": false
+  }
 }

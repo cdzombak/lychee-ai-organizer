@@ -1,0 +1,1 @@
+- After making a significant behavioral or feature change, update the project spec to reflect it.

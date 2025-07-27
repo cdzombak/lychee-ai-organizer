@@ -13,9 +13,10 @@ import (
 type DB struct {
 	conn *sql.DB
 	blocklist map[string]bool
+	pinnedOnly bool
 }
 
-func NewDB(cfg *config.DatabaseConfig, albumBlocklist []string) (*DB, error) {
+func NewDB(cfg *config.DatabaseConfig, albumBlocklist []string, pinnedOnly bool) (*DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
 		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 	
@@ -34,7 +35,7 @@ func NewDB(cfg *config.DatabaseConfig, albumBlocklist []string) (*DB, error) {
 		blocklist[albumID] = true
 	}
 
-	return &DB{conn: conn, blocklist: blocklist}, nil
+	return &DB{conn: conn, blocklist: blocklist, pinnedOnly: pinnedOnly}, nil
 }
 
 func (db *DB) Close() error {
@@ -110,6 +111,11 @@ func (db *DB) GetUnsortedPhotos() ([]Photo, error) {
 func (db *DB) GetTopLevelAlbums() ([]Album, error) {
 	blocklistCondition, blocklistArgs := db.buildBlocklistCondition()
 	
+	pinnedCondition := ""
+	if db.pinnedOnly {
+		pinnedCondition = " AND ba.is_pinned = 1"
+	}
+	
 	query := `
 		SELECT ba.id, ba.created_at, ba.updated_at, ba.published_at, ba.title, ba.description,
 		       ba.owner_id, ba.is_nsfw, ba.is_pinned, ba.sorting_col, ba.sorting_order,
@@ -117,7 +123,7 @@ func (db *DB) GetTopLevelAlbums() ([]Album, error) {
 		       ba._ai_description, ba._ai_description_ts
 		FROM base_albums ba
 		LEFT JOIN albums a ON ba.id = a.id
-		WHERE (a.parent_id IS NULL OR a.id IS NULL)` + blocklistCondition + `
+		WHERE (a.parent_id IS NULL OR a.id IS NULL)` + blocklistCondition + pinnedCondition + `
 		ORDER BY ba.title`
 
 	rows, err := db.conn.Query(query, blocklistArgs...)
@@ -201,6 +207,11 @@ func (db *DB) GetPhotosWithoutAIDescription() ([]Photo, error) {
 func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
 	blocklistCondition, blocklistArgs := db.buildBlocklistCondition()
 	
+	pinnedCondition := ""
+	if db.pinnedOnly {
+		pinnedCondition = " AND ba.is_pinned = 1"
+	}
+	
 	query := `
 		SELECT ba.id, ba.created_at, ba.updated_at, ba.published_at, ba.title, ba.description,
 		       ba.owner_id, ba.is_nsfw, ba.is_pinned, ba.sorting_col, ba.sorting_order,
@@ -208,7 +219,7 @@ func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
 		       ba._ai_description, ba._ai_description_ts
 		FROM base_albums ba
 		LEFT JOIN albums a ON ba.id = a.id
-		WHERE (a.parent_id IS NULL OR a.id IS NULL) AND ba._ai_description IS NULL` + blocklistCondition + `
+		WHERE (a.parent_id IS NULL OR a.id IS NULL) AND ba._ai_description IS NULL` + blocklistCondition + pinnedCondition + `
 		ORDER BY ba.title`
 
 	rows, err := db.conn.Query(query, blocklistArgs...)

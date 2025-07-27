@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	var configPath = flag.String("config", "", "Path to configuration file")
+	var configPath = flag.String("config", "config.json", "Path to configuration file")
 	flag.Parse()
 
 	if *configPath == "" {

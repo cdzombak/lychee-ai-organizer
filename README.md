@@ -69,14 +69,19 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
        "host": "localhost",
        "port": 8080
      },
-     "album_blocklist": ["album-id-1", "album-id-2"]
+     "albums": {
+       "blocklist": ["album-id-1", "album-id-2"],
+       "pinned_only": false
+     }
    }
    ```
 
-3. **Album Blocklist (Optional)**: Add album IDs to the `album_blocklist` array to exclude them from:
-   - AI description generation (both albums and their photos)
-   - Album suggestions for unsorted photos
-   - Progress tracking during rescan operations
+3. **Album Configuration (Optional)**: Configure album-related behavior:
+   - **Blocklist**: Add album IDs to the `blocklist` array to exclude them from:
+     - AI description generation (both albums and their photos)
+     - Album suggestions for unsorted photos
+     - Progress tracking during rescan operations
+   - **Pinned Only**: Set `pinned_only` to `true` to restrict album suggestions to only pinned albums (`is_pinned = true` in the database). This helps focus suggestions on your most important albums.
 
 ## Building and Running
 

@@ -13,7 +13,7 @@ type Config struct {
 	Ollama   OllamaConfig   `json:"ollama"`
 	Server   ServerConfig   `json:"server"`
 	Lychee   LycheeConfig   `json:"lychee"`
-	AlbumBlocklist []string `json:"album_blocklist,omitempty"`
+	Albums   AlbumsConfig   `json:"albums,omitempty"`
 }
 
 type DatabaseConfig struct {
@@ -41,6 +41,11 @@ type ServerConfig struct {
 
 type LycheeConfig struct {
 	BaseURL string `json:"base_url"`
+}
+
+type AlbumsConfig struct {
+	Blocklist  []string `json:"blocklist,omitempty"`
+	PinnedOnly bool     `json:"pinned_only,omitempty"`
 }
 
 func LoadConfig(configPath string) (*Config, error) {

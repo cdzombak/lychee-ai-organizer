@@ -84,7 +84,7 @@
 
         .photo-container img {
             max-width: 100%;
-            max-height: calc(100vh - 320px); /* Account for album suggestions (~120px), photo info (60px), rescan button (~40px), filmstrip (100px) */
+            max-height: calc(100vh - 340px); /* Account for album suggestions (~120px), photo info (60px), rescan button (~40px), filmstrip (120px) */
             min-height: 200px; /* Minimum photo size */
             object-fit: contain;
             border-radius: 8px;
@@ -145,14 +145,14 @@
         }
 
         .filmstrip {
-            height: 100px;
+            height: 120px;
             background-color: #2a2a2a;
             display: flex;
             align-items: center;
-            padding: 8px;
+            padding: 10px;
             overflow-x: auto;
             overflow-y: hidden;
-            gap: 8px;
+            gap: 10px;
             flex-shrink: 0;
         }
 
@@ -170,8 +170,8 @@
         }
 
         .thumbnail {
-            height: 80px;
-            width: 80px;
+            height: 100px;
+            width: 100px;
             object-fit: cover;
             border-radius: 4px;
             cursor: pointer;
