@@ -67,7 +67,7 @@ func (c *Client) GeneratePhotoDescription(photo *database.Photo) (string, error)
 		return "", fmt.Errorf("failed to fetch image: %w", err)
 	}
 
-	prompt := fmt.Sprintf(`Analyze this photo and provide a concise description in maximum 3 sentences. Focus on:
+	prompt := fmt.Sprintf(`Analyze this photo and provide a concise description in 1 sentence. Focus on:
 - Subject matter and composition
 - Photographic style and unique characteristics  
 - Overall mood and atmosphere
@@ -85,17 +85,13 @@ Provide only the description, no additional text.`,
 		getStringValue(photo.Model),
 		getStringValue(photo.Location))
 
-	// Build options for the request
-	options := c.buildOllamaOptions()
-	
 	req := &api.GenerateRequest{
-		Model:   c.imageModel,
-		Prompt:  prompt,
-		Stream:  &[]bool{false}[0],
+		Model:  c.imageModel,
+		Prompt: prompt,
+		Stream: &[]bool{false}[0],
 		Images: []api.ImageData{
 			imageBytes,
 		},
-		Options: options,
 	}
 
 	ctx := context.Background()
@@ -128,25 +124,25 @@ Provide only the description, no additional text.`,
 // buildOllamaOptions creates options map for Ollama API requests
 func (c *Client) buildOllamaOptions() map[string]interface{} {
 	options := make(map[string]interface{})
-	
+
 	// Set context window if specified
 	if c.config.ContextWindow > 0 {
 		options["num_ctx"] = c.config.ContextWindow
 		log.Printf("Setting Ollama context window to %d", c.config.ContextWindow)
 	}
-	
+
 	// Set temperature if specified
 	if c.config.Temperature > 0 {
 		options["temperature"] = c.config.Temperature
 		log.Printf("Setting Ollama temperature to %f", c.config.Temperature)
 	}
-	
+
 	// Set top_p if specified
 	if c.config.TopP > 0 {
 		options["top_p"] = c.config.TopP
 		log.Printf("Setting Ollama top_p to %f", c.config.TopP)
 	}
-	
+
 	// Add any additional options from config
 	if c.config.Options != nil {
 		for key, value := range c.config.Options {
@@ -154,20 +150,20 @@ func (c *Client) buildOllamaOptions() map[string]interface{} {
 			log.Printf("Setting custom Ollama option %s to %v", key, value)
 		}
 	}
-	
+
 	return options
 }
 
 func (c *Client) GenerateAlbumDescription(album *database.Album, photos []database.Photo) (string, error) {
 	log.Printf("Starting album description generation for album %s (%s) with %d photos", album.ID, album.Title, len(photos))
-	
+
 	var photoDescriptions []string
 	var dates []string
 
 	log.Printf("Processing photos for album %s...", album.ID)
 	for i, photo := range photos {
 		log.Printf("Processing photo %d/%d (ID: %s) for album %s", i+1, len(photos), photo.ID, album.ID)
-		
+
 		if photo.AIDescription.Valid {
 			photoDescriptions = append(photoDescriptions, photo.AIDescription.String)
 			log.Printf("Added AI description for photo %s (length: %d chars)", photo.ID, len(photo.AIDescription.String))
@@ -182,7 +178,7 @@ func (c *Client) GenerateAlbumDescription(album *database.Album, photos []databa
 			dates = append(dates, photo.CreatedAt.Format("2006-01-02"))
 		}
 	}
-	
+
 	log.Printf("Collected %d photo descriptions and %d dates for album %s", len(photoDescriptions), len(dates), album.ID)
 
 	if len(photoDescriptions) == 0 {
@@ -204,21 +200,21 @@ Date range: %s to %s
 
 Provide a cohesive summary that synthesizes the common themes, subjects, and mood across these photos.
 
-IMPORTANT: Keep your response to a maximum of 3 sentences. Be concise and focus on the most important aspects.
+IMPORTANT: Keep your response to a maximum of 2 sentences. Be concise and focus on the most important aspects.
 
 Provide only the summary, no additional text.`,
 		strings.Join(photoDescriptions, "\n- "),
 		minDate,
 		maxDate)
-	
+
 	log.Printf("Generated prompt for album %s (length: %d chars)", album.ID, len(prompt))
 
 	log.Printf("Creating Ollama request for album %s using model %s", album.ID, c.synthModel)
-	
+
 	// Build options for the request
 	options := c.buildOllamaOptions()
 	log.Printf("Using Ollama options for album %s: %+v", album.ID, options)
-	
+
 	req := &api.GenerateRequest{
 		Model:   c.synthModel,
 		Prompt:  prompt,
@@ -449,10 +445,10 @@ func getMaxDate(dates []string) string {
 func isMovieFile(photo *database.Photo, variant *database.SizeVariant) bool {
 	// Common movie file extensions
 	movieExtensions := []string{
-		".mp4", ".m4v", ".mov", ".avi", ".mkv", ".wmv", ".flv", 
+		".mp4", ".m4v", ".mov", ".avi", ".mkv", ".wmv", ".flv",
 		".webm", ".ogv", ".3gp", ".m2v", ".mpg", ".mpeg", ".mts", ".m2ts",
 	}
-	
+
 	// Check the photo type field (which should contain the file extension)
 	photoType := strings.ToLower(photo.Type)
 	for _, ext := range movieExtensions {
@@ -460,7 +456,7 @@ func isMovieFile(photo *database.Photo, variant *database.SizeVariant) bool {
 			return true
 		}
 	}
-	
+
 	// Also check the file extension from the variant's short_path
 	if variant != nil {
 		fileExt := strings.ToLower(filepath.Ext(variant.ShortPath))
@@ -470,6 +466,6 @@ func isMovieFile(photo *database.Photo, variant *database.SizeVariant) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
