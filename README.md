@@ -1,6 +1,8 @@
-# AI-Powered Photo Organization Web Application
+# AI-Powered Lychee Photo Organization Web Application
 
-This application helps organize an existing photo library into albums using artificial intelligence. It connects to a Lychee photo database and uses a local Ollama instance to generate descriptions for photos and albums, then provides intelligent suggestions for organizing unsorted photos.
+This application helps organize an existing [Lychee](https://github.com/LycheeOrg/Lychee) photo library into albums using artificial intelligence. It connects to a [Lychee](https://github.com/LycheeOrg/Lychee) photo database and uses a local [Ollama](https://ollama.com) instance to generate descriptions for photos and albums, then provides intelligent suggestions for organizing unsorted photos.
+
+![screenshot](screenshot.png)
 
 ## Features
 
