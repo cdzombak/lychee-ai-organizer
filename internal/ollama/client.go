@@ -186,7 +186,20 @@ func (c *Client) GenerateAlbumDescription(album *database.Album, photos []databa
 		return "", fmt.Errorf("no photo descriptions available for album synthesis")
 	}
 
-	log.Printf("Creating prompt for album %s with %d descriptions", album.ID, len(photoDescriptions))
+	// Apply hierarchical compaction if we have more than 30 descriptions
+	compactedDescriptions := photoDescriptions
+	if len(photoDescriptions) > 30 {
+		log.Printf("Album %s has %d descriptions, applying hierarchical compaction", album.ID, len(photoDescriptions))
+		var err error
+		compactedDescriptions, err = c.compactDescriptionsHierarchically(album.ID, photoDescriptions)
+		if err != nil {
+			log.Printf("Failed to compact descriptions for album %s: %v", album.ID, err)
+			return "", fmt.Errorf("failed to compact descriptions: %w", err)
+		}
+		log.Printf("Compacted %d descriptions down to %d for album %s", len(photoDescriptions), len(compactedDescriptions), album.ID)
+	}
+
+	log.Printf("Creating prompt for album %s with %d descriptions", album.ID, len(compactedDescriptions))
 	minDate := getMinDate(dates)
 	maxDate := getMaxDate(dates)
 	log.Printf("Date range for album %s: %s to %s", album.ID, minDate, maxDate)
@@ -203,7 +216,7 @@ Provide a cohesive summary that synthesizes the common themes, subjects, and moo
 IMPORTANT: Keep your response to a maximum of 2 sentences. Be concise and focus on the most important aspects.
 
 Provide only the summary, no additional text.`,
-		strings.Join(photoDescriptions, "\n- "),
+		strings.Join(compactedDescriptions, "\n- "),
 		minDate,
 		maxDate)
 
@@ -468,4 +481,108 @@ func isMovieFile(photo *database.Photo, variant *database.SizeVariant) bool {
 	}
 
 	return false
+}
+
+// compactDescriptionsHierarchically applies recursive batch compression to reduce descriptions to 30 or fewer
+func (c *Client) compactDescriptionsHierarchically(albumID string, descriptions []string) ([]string, error) {
+	const batchSize = 30
+	
+	if len(descriptions) <= batchSize {
+		return descriptions, nil
+	}
+	
+	log.Printf("Starting hierarchical compaction for album %s with %d descriptions", albumID, len(descriptions))
+	
+	// Create batches of descriptions
+	batches := make([][]string, 0)
+	for i := 0; i < len(descriptions); i += batchSize {
+		end := i + batchSize
+		if end > len(descriptions) {
+			end = len(descriptions)
+		}
+		batches = append(batches, descriptions[i:end])
+	}
+	
+	log.Printf("Created %d batches of descriptions for album %s", len(batches), albumID)
+	
+	// Compress each batch
+	compressedBatches := make([]string, 0, len(batches))
+	for i, batch := range batches {
+		log.Printf("Compressing batch %d/%d (%d descriptions) for album %s", i+1, len(batches), len(batch), albumID)
+		
+		compressed, err := c.compressBatchDescriptions(albumID, batch, i+1)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compress batch %d: %w", i+1, err)
+		}
+		
+		compressedBatches = append(compressedBatches, compressed)
+		log.Printf("Successfully compressed batch %d for album %s (result length: %d chars)", i+1, albumID, len(compressed))
+	}
+	
+	// If we still have too many compressed batches, recursively compress them
+	if len(compressedBatches) > batchSize {
+		log.Printf("Still have %d compressed batches for album %s, applying another level of compaction", len(compressedBatches), albumID)
+		return c.compactDescriptionsHierarchically(albumID, compressedBatches)
+	}
+	
+	log.Printf("Hierarchical compaction complete for album %s: %d -> %d descriptions", albumID, len(descriptions), len(compressedBatches))
+	return compressedBatches, nil
+}
+
+// compressBatchDescriptions compresses a batch of descriptions into a single summary
+func (c *Client) compressBatchDescriptions(albumID string, descriptions []string, batchNumber int) (string, error) {
+	prompt := fmt.Sprintf(`Compress the following photo descriptions into a single, concise summary that captures the key themes, subjects, and characteristics across all photos:
+
+Photo descriptions:
+%s
+
+Create a unified summary that:
+- Identifies common subjects, themes, and visual elements
+- Captures the overall mood and style
+- Mentions key activities or events depicted
+- Notes any significant compositional or photographic patterns
+
+Keep the summary to 2-3 sentences maximum. Focus on what ties these photos together and their collective essence.
+
+Provide only the summary, no additional text.`,
+		strings.Join(descriptions, "\n- "))
+	
+	log.Printf("Compressing batch %d for album %s (prompt length: %d chars)", batchNumber, albumID, len(prompt))
+	
+	// Build options for the request
+	options := c.buildOllamaOptions()
+	
+	req := &api.GenerateRequest{
+		Model:   c.synthModel,
+		Prompt:  prompt,
+		Stream:  &[]bool{false}[0],
+		Options: options,
+	}
+	
+	ctx := context.Background()
+	var response strings.Builder
+	
+	err := retry.Do(
+		func() error {
+			response.Reset()
+			return c.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
+				response.WriteString(resp.Response)
+				return nil
+			})
+		},
+		retry.Attempts(3),
+		retry.Delay(time.Second),
+		retry.DelayType(retry.BackOffDelay),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to compress batch descriptions after retries: %w", err)
+	}
+	
+	compressed := strings.TrimSpace(response.String())
+	
+	// Remove <think> tags and their contents
+	compressed = removeThinkTags(compressed)
+	
+	log.Printf("Successfully compressed batch %d for album %s (result: %s)", batchNumber, albumID, compressed)
+	return compressed, nil
 }
