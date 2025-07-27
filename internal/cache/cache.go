@@ -72,3 +72,7 @@ func (c *Cache) Set(photoID string, suggestions []string) {
 func (c *Cache) Remove(photoID string) {
 	delete(c.suggestions, photoID)
 }
+
+func (c *Cache) Clear() {
+	c.suggestions = make(map[string][]string)
+}

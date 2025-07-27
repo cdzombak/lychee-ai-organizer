@@ -308,6 +308,31 @@
             100% { transform: rotate(360deg); }
         }
 
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            font-weight: 500;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
         .error-summary {
             background-color: #2a2a2a;
             border: 2px solid #f44336;
@@ -361,8 +386,19 @@
             const [progress, setProgress] = useState(null);
             const [completionResult, setCompletionResult] = useState(null);
             const [ws, setWs] = useState(null);
+            const [toastMessage, setToastMessage] = useState(null);
 
             const currentPhoto = photos[currentPhotoIndex];
+
+            // Auto-hide toast after 3 seconds
+            useEffect(() => {
+                if (toastMessage) {
+                    const timer = setTimeout(() => {
+                        setToastMessage(null);
+                    }, 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [toastMessage]);
 
             useEffect(() => {
                 loadPhotos();
@@ -586,6 +622,9 @@
             const purgeCacheForCurrentPhoto = async () => {
                 if (!currentPhoto) return;
                 
+                // Clear suggestions immediately to remove recommended album buttons
+                setSuggestions([]);
+                
                 try {
                     const response = await fetch(`/api/cache/purge?photo_id=${currentPhoto.id}`, {
                         method: 'POST',
@@ -595,6 +634,8 @@
                     });
                     
                     if (response.ok) {
+                        const data = await response.json();
+                        
                         // Remove from local cache
                         setSuggestionsCache(prev => {
                             const newCache = new Map(prev);
@@ -602,13 +643,18 @@
                             return newCache;
                         });
                         
+                        // Show success toast
+                        setToastMessage(data.message || 'Cache cleared successfully');
+                        
                         // Re-request suggestions for current photo
                         loadSuggestions(currentPhoto.id);
                     } else {
                         console.error('Failed to purge cache:', response.statusText);
+                        setToastMessage('Failed to clear cache');
                     }
                 } catch (error) {
                     console.error('Error purging cache:', error);
+                    setToastMessage('Error clearing cache');
                 }
             };
 
@@ -777,6 +823,13 @@
                             />
                         ))}
                     </div>
+                    
+                    {/* Toast notification */}
+                    {toastMessage && (
+                        <div className="toast">
+                            {toastMessage}
+                        </div>
+                    )}
                 </div>
             );
         }

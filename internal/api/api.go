@@ -284,17 +284,24 @@ func (s *Server) handlePurgeCache(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Purging suggestion cache for photo %s", photoID)
+
 	// Remove the specific photo from cache
 	s.cache.Remove(photoID)
 	
-	// Save the updated cache
+	// Save the updated cache (this clears the entry from the JSON file)
 	if err := s.cache.Save(); err != nil {
 		log.Printf("Error saving cache after purge: %v", err)
 		// Don't fail the request, just log the error
 	}
 
+	log.Printf("Successfully purged cache for photo %s", photoID)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "cache purged for photo"})
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "cache purged for photo",
+		"message": "Cache cleared successfully",
+	})
 }
 
 func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
