@@ -178,4 +178,8 @@ ollama pull qwen3:8b          # For description synthesis
 
 ## License
 
-This project is provided as-is for personal use.
+GNU General Public License v3.0; see [LICENSE](LICENSE) in this repository.
+
+## Author
+
+[Claude Code](https://www.anthropic.com/claude-code) wrote this code with management by Chris Dzombak ([dzombak.com](https://www.dzombak.com) / [github.com/cdzombak](https://www.github.com/cdzombak)).
