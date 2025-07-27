@@ -37,9 +37,12 @@
         .album-suggestions {
             display: flex;
             justify-content: center;
+            align-items: center;
             gap: 20px;
             padding: 20px;
             background-color: #2a2a2a;
+            min-height: 100px;
+            height: 100px;
         }
 
         .album-button {
@@ -84,7 +87,7 @@
 
         .photo-container img {
             max-width: 100%;
-            max-height: calc(100vh - 340px); /* Account for album suggestions (~120px), photo info (60px), rescan button (~40px), filmstrip (120px) */
+            max-height: calc(100vh - 340px); /* Account for album suggestions (100px), photo info (60px), rescan button (~40px), filmstrip (120px) */
             min-height: 200px; /* Minimum photo size */
             object-fit: contain;
             border-radius: 8px;
@@ -372,6 +375,7 @@
                     // Check if we have cached suggestions for this photo
                     if (suggestionsCache.has(currentPhoto.id)) {
                         setSuggestions(suggestionsCache.get(currentPhoto.id));
+                        setSuggestionsLoading(false);
                     } else {
                         setSuggestions([]); // Clear suggestions until new ones load
                         loadSuggestions(currentPhoto.id);
@@ -380,7 +384,7 @@
                     setSuggestions([]);
                     setSuggestionsLoading(false);
                 }
-            }, [currentPhoto]);
+            }, [currentPhoto, suggestionsCache]);
 
             // Preload suggestions when current photo changes
             useEffect(() => {
@@ -526,23 +530,12 @@
                     const suggestions = data.albums || [];
                     
                     // Always cache the response for this photo
+                    // The useEffect will automatically update UI when cache changes
                     setSuggestionsCache(prev => new Map(prev).set(photoId, suggestions));
-                    
-                    // Only update UI if this is still the current photo (check again at response time)
-                    const finalCurrentPhotoId = photos[currentPhotoIndex]?.id;
-                    if (finalCurrentPhotoId === photoId) {
-                        setSuggestions(suggestions);
-                        setSuggestionsLoading(false);
-                    }
                 } catch (error) {
                     console.error(`Error loading suggestions for photo ${photoId}:`, error);
-                    
-                    // Only update UI if this is still the current photo
-                    const finalCurrentPhotoId = photos[currentPhotoIndex]?.id;
-                    if (finalCurrentPhotoId === photoId) {
-                        setSuggestions([]);
-                        setSuggestionsLoading(false);
-                    }
+                    // Cache empty result on error so we don't retry endlessly
+                    setSuggestionsCache(prev => new Map(prev).set(photoId, []));
                 } finally {
                     // Always clear loading state for this photo
                     setLoadingStates(prev => new Map(prev).set(photoId, false));
