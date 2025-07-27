@@ -351,6 +351,8 @@
             const [suggestionsLoading, setSuggestionsLoading] = useState(false);
             const [suggestionsCache, setSuggestionsCache] = useState(new Map());
             const [loadingStates, setLoadingStates] = useState(new Map());
+            const [preloadQueue, setPreloadQueue] = useState([]);
+            const [isPreloading, setIsPreloading] = useState(false);
             const [loading, setLoading] = useState(true);
             const [progress, setProgress] = useState(null);
             const [completionResult, setCompletionResult] = useState(null);
@@ -383,7 +385,7 @@
             // Preload suggestions when current photo changes
             useEffect(() => {
                 if (photos.length > 0 && currentPhotoIndex >= 0) {
-                    preloadSurroundingSuggestions(currentPhotoIndex);
+                    queueSurroundingPreloads(currentPhotoIndex);
                 }
             }, [currentPhotoIndex, photos.length]);
 
@@ -477,143 +479,225 @@
                 }
             };
 
-            const loadSuggestions = async (photoId) => {
+            const loadSuggestions = async (photoId, isPriority = true) => {
                 // Check cache first
                 if (suggestionsCache.has(photoId)) {
-                    // Update loading state for this photo
-                    setLoadingStates(prev => new Map(prev).set(photoId, false));
-                    // Only update UI if this is still the current photo
-                    if (currentPhoto && currentPhoto.id === photoId) {
+                    // Get current photo ID at time of execution, not closure time
+                    const currentPhotoId = photos[currentPhotoIndex]?.id;
+                    if (currentPhotoId === photoId) {
                         setSuggestionsLoading(false);
                         setSuggestions(suggestionsCache.get(photoId));
                     }
                     return;
                 }
 
-                // Set loading state for this specific photo
+                // Check if already loading this photo to prevent duplicate requests
+                if (loadingStates.get(photoId)) {
+                    // If this is for the current photo, make sure loading state is shown
+                    const currentPhotoId = photos[currentPhotoIndex]?.id;
+                    if (currentPhotoId === photoId) {
+                        setSuggestionsLoading(true);
+                    }
+                    return;
+                }
+
+                // If this is a priority request (current photo), remove it from preload queue
+                if (isPriority) {
+                    setPreloadQueue(prev => prev.filter(item => item.id !== photoId));
+                }
+
+                // Set loading state for this photo
                 setLoadingStates(prev => new Map(prev).set(photoId, true));
-                if (currentPhoto && currentPhoto.id === photoId) {
+                
+                // Check if this is for the current photo and set UI loading state
+                const currentPhotoId = photos[currentPhotoIndex]?.id;
+                if (currentPhotoId === photoId) {
                     setSuggestionsLoading(true);
                 }
 
                 try {
                     const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
                     const data = await response.json();
                     const suggestions = data.albums || [];
                     
-                    // Cache the suggestions in memory
+                    // Always cache the response for this photo
                     setSuggestionsCache(prev => new Map(prev).set(photoId, suggestions));
                     
-                    // Only update UI if this is still the current photo
-                    if (currentPhoto && currentPhoto.id === photoId) {
+                    // Only update UI if this is still the current photo (check again at response time)
+                    const finalCurrentPhotoId = photos[currentPhotoIndex]?.id;
+                    if (finalCurrentPhotoId === photoId) {
                         setSuggestions(suggestions);
-                    }
-                } catch (error) {
-                    console.error('Error loading suggestions:', error);
-                    // Only update UI if this is still the current photo
-                    if (currentPhoto && currentPhoto.id === photoId) {
-                        setSuggestions([]);
-                    }
-                } finally {
-                    // Update loading state for this photo
-                    setLoadingStates(prev => new Map(prev).set(photoId, false));
-                    if (currentPhoto && currentPhoto.id === photoId) {
                         setSuggestionsLoading(false);
                     }
+                } catch (error) {
+                    console.error(`Error loading suggestions for photo ${photoId}:`, error);
+                    
+                    // Only update UI if this is still the current photo
+                    const finalCurrentPhotoId = photos[currentPhotoIndex]?.id;
+                    if (finalCurrentPhotoId === photoId) {
+                        setSuggestions([]);
+                        setSuggestionsLoading(false);
+                    }
+                } finally {
+                    // Always clear loading state for this photo
+                    setLoadingStates(prev => new Map(prev).set(photoId, false));
+                    
+                    // If this was a preload request, trigger the next one
+                    if (!isPriority) {
+                        processNextPreload();
+                    }
                 }
             };
 
-            const preloadSuggestions = async (photoId) => {
-                // Skip if already cached or currently loading
-                if (suggestionsCache.has(photoId) || loadingStates.get(photoId)) {
+            const processNextPreload = () => {
+                if (isPreloading) {
+                    return; // Already processing
+                }
+                
+                setPreloadQueue(prev => {
+                    if (prev.length === 0) {
+                        return prev;
+                    }
+                    
+                    const [nextItem, ...remaining] = prev;
+                    
+                    // Check if still needed (might have been cached or loaded elsewhere)
+                    if (!suggestionsCache.has(nextItem.id) && !loadingStates.get(nextItem.id)) {
+                        setIsPreloading(true);
+                        loadSuggestions(nextItem.id, false).finally(() => {
+                            setIsPreloading(false);
+                            // Process next item in queue after this one completes
+                            setTimeout(() => processNextPreload(), 0);
+                        });
+                    } else {
+                        // Item no longer needed, skip to next
+                        setTimeout(() => processNextPreload(), 0);
+                    }
+                    
+                    return remaining;
+                });
+            };
+
+            const queueSurroundingPreloads = (centerIndex) => {
+                // Validate center index
+                if (centerIndex < 0 || centerIndex >= photos.length) {
                     return;
                 }
-
-                // Set loading state for this photo
-                setLoadingStates(prev => new Map(prev).set(photoId, true));
-
-                try {
-                    const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`);
-                    const data = await response.json();
-                    const suggestions = data.albums || [];
-                    
-                    // Cache the suggestions in memory
-                    setSuggestionsCache(prev => new Map(prev).set(photoId, suggestions));
-                } catch (error) {
-                    console.error('Error preloading suggestions for photo', photoId, ':', error);
-                } finally {
-                    // Clear loading state for this photo
-                    setLoadingStates(prev => new Map(prev).set(photoId, false));
-                }
-            };
-
-            const preloadSurroundingSuggestions = (centerIndex) => {
+                
                 // Get photos in range: 2 to left, 4 to right
                 const leftStart = Math.max(0, centerIndex - 2);
                 const rightEnd = Math.min(photos.length, centerIndex + 5); // +5 because centerIndex + 4 inclusive
                 
-                const photosToPreload = [];
+                const photosToQueue = [];
+                const seenIds = new Set();
                 
                 // Add photos to the left (excluding center)
                 for (let i = leftStart; i < centerIndex; i++) {
-                    if (photos[i] && !suggestionsCache.has(photos[i].id) && !loadingStates.get(photos[i].id)) {
-                        photosToPreload.push(photos[i].id);
+                    const photo = photos[i];
+                    if (photo && 
+                        !seenIds.has(photo.id) &&
+                        !suggestionsCache.has(photo.id) && 
+                        !loadingStates.get(photo.id)) {
+                        seenIds.add(photo.id);
+                        photosToQueue.push({
+                            id: photo.id,
+                            index: i,
+                            distance: centerIndex - i // For prioritization
+                        });
                     }
                 }
                 
                 // Add photos to the right (excluding center)
                 for (let i = centerIndex + 1; i < rightEnd; i++) {
-                    if (photos[i] && !suggestionsCache.has(photos[i].id) && !loadingStates.get(photos[i].id)) {
-                        photosToPreload.push(photos[i].id);
+                    const photo = photos[i];
+                    if (photo && 
+                        !seenIds.has(photo.id) &&
+                        !suggestionsCache.has(photo.id) && 
+                        !loadingStates.get(photo.id)) {
+                        seenIds.add(photo.id);
+                        photosToQueue.push({
+                            id: photo.id,
+                            index: i,
+                            distance: i - centerIndex // For prioritization
+                        });
                     }
                 }
                 
-                // Queue preload requests with 2-second delays
-                photosToPreload.forEach((photoId, index) => {
-                    setTimeout(() => {
-                        // Double-check that we still need to preload this photo
-                        if (!suggestionsCache.has(photoId) && !loadingStates.get(photoId)) {
-                            preloadSuggestions(photoId);
-                        }
-                    }, (index + 1) * 2000); // 2 second delay between requests
+                // Sort by distance (closer photos get priority)
+                photosToQueue.sort((a, b) => a.distance - b.distance);
+                
+                // Update the queue, removing any existing items that are in the new list
+                // and ensuring no duplicates
+                setPreloadQueue(prev => {
+                    const newIds = new Set(photosToQueue.map(p => p.id));
+                    const filteredPrev = prev.filter(item => !newIds.has(item.id));
+                    return [...photosToQueue, ...filteredPrev];
                 });
+                
+                // Start processing if not already in progress
+                if (!isPreloading && photosToQueue.length > 0) {
+                    processNextPreload();
+                }
+                
+                if (photosToQueue.length > 0) {
+                    console.log(`Queued ${photosToQueue.length} photos for preloading around index ${centerIndex}`);
+                }
             };
 
             const movePhoto = async (albumId) => {
                 if (!currentPhoto) return;
 
+                const photoIdToMove = currentPhoto.id;
+
                 try {
-                    await fetch('/api/photos/move', {
+                    const response = await fetch('/api/photos/move', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
-                            photo_id: currentPhoto.id,
+                            photo_id: photoIdToMove,
                             album_id: albumId,
                         }),
                     });
 
-                    // Remove photo from list, cache, and loading states
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    // Clean up state for the moved photo
                     setSuggestionsCache(prev => {
                         const newCache = new Map(prev);
-                        newCache.delete(currentPhoto.id);
+                        newCache.delete(photoIdToMove);
                         return newCache;
                     });
                     setLoadingStates(prev => {
                         const newStates = new Map(prev);
-                        newStates.delete(currentPhoto.id);
+                        newStates.delete(photoIdToMove);
                         return newStates;
                     });
+                    setPreloadQueue(prev => prev.filter(item => item.id !== photoIdToMove));
                     
-                    const newPhotos = photos.filter(p => p.id !== currentPhoto.id);
+                    // Remove photo from list
+                    const newPhotos = photos.filter(p => p.id !== photoIdToMove);
                     setPhotos(newPhotos);
                     
-                    if (currentPhotoIndex >= newPhotos.length) {
-                        setCurrentPhotoIndex(Math.max(0, newPhotos.length - 1));
+                    // Adjust current index if necessary
+                    if (currentPhotoIndex >= newPhotos.length && newPhotos.length > 0) {
+                        setCurrentPhotoIndex(newPhotos.length - 1);
+                    } else if (newPhotos.length === 0) {
+                        setCurrentPhotoIndex(0);
+                        setSuggestions([]);
+                        setSuggestionsLoading(false);
                     }
                 } catch (error) {
-                    console.error('Error moving photo:', error);
+                    console.error(`Error moving photo ${photoIdToMove}:`, error);
+                    // Could show user-facing error message here
                 }
             };
 
