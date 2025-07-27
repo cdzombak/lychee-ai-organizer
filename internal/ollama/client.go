@@ -67,7 +67,7 @@ func (c *Client) GeneratePhotoDescription(photo *database.Photo) (string, error)
 		return "", fmt.Errorf("failed to fetch image: %w", err)
 	}
 
-	prompt := fmt.Sprintf(`Analyze this photo and provide a concise description in 1 sentence. Focus on:
+	prompt := fmt.Sprintf(`Analyze this photo and provide a concise description in 2 sentences. Focus on:
 - Subject matter and composition
 - Photographic style and unique characteristics  
 - Overall mood and atmosphere
@@ -318,7 +318,7 @@ And these available albums:
 Analyze this photo and suggest the top 3 most appropriate albums for it. Consider:
 - Thematic similarity (subject matter, content type)
 - Contextual relevance (setting, event type, activity)
-- Temporal relevance (how well the photo's date fits with other photos)
+- Other clues (album title vs. photo subject, album date vs. photo date)
 
 You must respond with valid JSON in exactly this format:
 {
@@ -486,13 +486,13 @@ func isMovieFile(photo *database.Photo, variant *database.SizeVariant) bool {
 // compactDescriptionsHierarchically applies recursive batch compression to reduce descriptions to 30 or fewer
 func (c *Client) compactDescriptionsHierarchically(albumID string, descriptions []string) ([]string, error) {
 	const batchSize = 30
-	
+
 	if len(descriptions) <= batchSize {
 		return descriptions, nil
 	}
-	
+
 	log.Printf("Starting hierarchical compaction for album %s with %d descriptions", albumID, len(descriptions))
-	
+
 	// Create batches of descriptions
 	batches := make([][]string, 0)
 	for i := 0; i < len(descriptions); i += batchSize {
@@ -502,29 +502,29 @@ func (c *Client) compactDescriptionsHierarchically(albumID string, descriptions 
 		}
 		batches = append(batches, descriptions[i:end])
 	}
-	
+
 	log.Printf("Created %d batches of descriptions for album %s", len(batches), albumID)
-	
+
 	// Compress each batch
 	compressedBatches := make([]string, 0, len(batches))
 	for i, batch := range batches {
 		log.Printf("Compressing batch %d/%d (%d descriptions) for album %s", i+1, len(batches), len(batch), albumID)
-		
+
 		compressed, err := c.compressBatchDescriptions(albumID, batch, i+1)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compress batch %d: %w", i+1, err)
 		}
-		
+
 		compressedBatches = append(compressedBatches, compressed)
 		log.Printf("Successfully compressed batch %d for album %s (result length: %d chars)", i+1, albumID, len(compressed))
 	}
-	
+
 	// If we still have too many compressed batches, recursively compress them
 	if len(compressedBatches) > batchSize {
 		log.Printf("Still have %d compressed batches for album %s, applying another level of compaction", len(compressedBatches), albumID)
 		return c.compactDescriptionsHierarchically(albumID, compressedBatches)
 	}
-	
+
 	log.Printf("Hierarchical compaction complete for album %s: %d -> %d descriptions", albumID, len(descriptions), len(compressedBatches))
 	return compressedBatches, nil
 }
@@ -542,26 +542,26 @@ Create a unified summary that:
 - Mentions key activities or events depicted
 - Notes any significant compositional or photographic patterns
 
-Keep the summary to 2-3 sentences maximum. Focus on what ties these photos together and their collective essence.
+Keep the summary to 2-4 sentences maximum. Focus on what ties these photos together and their collective essence.
 
 Provide only the summary, no additional text.`,
 		strings.Join(descriptions, "\n- "))
-	
+
 	log.Printf("Compressing batch %d for album %s (prompt length: %d chars)", batchNumber, albumID, len(prompt))
-	
+
 	// Build options for the request
 	options := c.buildOllamaOptions()
-	
+
 	req := &api.GenerateRequest{
 		Model:   c.synthModel,
 		Prompt:  prompt,
 		Stream:  &[]bool{false}[0],
 		Options: options,
 	}
-	
+
 	ctx := context.Background()
 	var response strings.Builder
-	
+
 	err := retry.Do(
 		func() error {
 			response.Reset()
@@ -577,12 +577,12 @@ Provide only the summary, no additional text.`,
 	if err != nil {
 		return "", fmt.Errorf("failed to compress batch descriptions after retries: %w", err)
 	}
-	
+
 	compressed := strings.TrimSpace(response.String())
-	
+
 	// Remove <think> tags and their contents
 	compressed = removeThinkTags(compressed)
-	
+
 	log.Printf("Successfully compressed batch %d for album %s (result: %s)", batchNumber, albumID, compressed)
 	return compressed, nil
 }
