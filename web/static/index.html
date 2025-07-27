@@ -369,22 +369,43 @@
 
             useEffect(() => {
                 if (currentPhoto) {
-                    // Update loading state for current photo
-                    setSuggestionsLoading(loadingStates.get(currentPhoto.id) || false);
-                    
                     // Check if we have cached suggestions for this photo
                     if (suggestionsCache.has(currentPhoto.id)) {
                         setSuggestions(suggestionsCache.get(currentPhoto.id));
                         setSuggestionsLoading(false);
                     } else {
-                        setSuggestions([]); // Clear suggestions until new ones load
-                        loadSuggestions(currentPhoto.id);
+                        // No cached suggestions - clear UI and start loading
+                        setSuggestions([]);
+                        
+                        // Set loading state based on whether we're already loading this photo
+                        const isAlreadyLoading = loadingStates.get(currentPhoto.id) || false;
+                        setSuggestionsLoading(isAlreadyLoading);
+                        
+                        // If not already loading, start loading and ensure UI shows loading state
+                        if (!isAlreadyLoading) {
+                            setSuggestionsLoading(true);
+                            loadSuggestions(currentPhoto.id);
+                        }
                     }
                 } else {
                     setSuggestions([]);
                     setSuggestionsLoading(false);
                 }
-            }, [currentPhoto, suggestionsCache]);
+            }, [currentPhoto, suggestionsCache, loadingStates]);
+
+            // Defensive check to detect and fix inconsistent UI state
+            useEffect(() => {
+                if (currentPhoto && 
+                    !suggestionsCache.has(currentPhoto.id) && 
+                    !loadingStates.get(currentPhoto.id) && 
+                    suggestions.length === 0 && 
+                    !suggestionsLoading) {
+                    
+                    console.log(`Detected inconsistent state for photo ${currentPhoto.id}, fixing...`);
+                    setSuggestionsLoading(true);
+                    loadSuggestions(currentPhoto.id);
+                }
+            }, [currentPhoto, suggestionsCache, loadingStates, suggestions, suggestionsLoading]);
 
             // Preload suggestions when current photo changes
             useEffect(() => {
@@ -518,13 +539,26 @@
                 if (currentPhotoId === photoId) {
                     setSuggestionsLoading(true);
                 }
+                
+                console.log(`Loading suggestions for photo ${photoId} (priority: ${isPriority})`);
+
+                // Add timeout to prevent infinite loading
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    controller.abort();
+                    console.log(`Request timeout for photo ${photoId}`);
+                }, 30000); // 30 second timeout
 
                 try {
-                    const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`);
+                    const response = await fetch(`/api/photos/suggestions?photo_id=${photoId}`, {
+                        signal: controller.signal
+                    });
                     
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
+                    
+                    clearTimeout(timeoutId); // Clear timeout on successful response
                     
                     const data = await response.json();
                     const suggestions = data.albums || [];
@@ -532,13 +566,22 @@
                     // Always cache the response for this photo
                     // The useEffect will automatically update UI when cache changes
                     setSuggestionsCache(prev => new Map(prev).set(photoId, suggestions));
+                    console.log(`Cached ${suggestions.length} suggestions for photo ${photoId}`);
                 } catch (error) {
-                    console.error(`Error loading suggestions for photo ${photoId}:`, error);
+                    clearTimeout(timeoutId); // Always clear timeout
+                    
+                    if (error.name === 'AbortError') {
+                        console.log(`Request aborted for photo ${photoId} (likely timeout)`);
+                    } else {
+                        console.error(`Error loading suggestions for photo ${photoId}:`, error);
+                    }
+                    
                     // Cache empty result on error so we don't retry endlessly
                     setSuggestionsCache(prev => new Map(prev).set(photoId, []));
                 } finally {
                     // Always clear loading state for this photo
                     setLoadingStates(prev => new Map(prev).set(photoId, false));
+                    console.log(`Finished loading suggestions for photo ${photoId}`);
                     
                     // If this was a preload request, trigger the next one
                     if (!isPriority) {
