@@ -80,7 +80,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "lychee-ai-organizer"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "lychee-ai-organizer"})
 }
 
 func (s *Server) handleUnsortedPhotos(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +133,7 @@ func (s *Server) handleUnsortedPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) handlePhotoSuggestions(w http.ResponseWriter, r *http.Request) {
@@ -223,7 +223,7 @@ func (s *Server) handlePhotoSuggestions(w http.ResponseWriter, r *http.Request) 
 	
 	log.Printf("Returning %d album suggestions", len(response.Albums))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) handleMovePhoto(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +250,7 @@ func (s *Server) handleMovePhoto(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
 func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
@@ -261,7 +261,7 @@ func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
 
 	// This will be handled by WebSocket in a separate handler
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"status": "rescan started"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "rescan started"})
 }
 
 type PhotoWithVariants struct {

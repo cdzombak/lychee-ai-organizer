@@ -77,5 +77,5 @@ func (app *App) Run() error {
 
 func (app *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	w.Write(indexHTML)
+	_, _ = w.Write(indexHTML)
 }

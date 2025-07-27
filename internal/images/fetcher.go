@@ -34,10 +34,7 @@ func (f *Fetcher) GetImageBytes(variant *database.SizeVariant) ([]byte, string, 
 	var imageURL string
 	if variant.Type == database.SizeVariantOriginal {
 		// For original variants, strip "original/" prefix and use /uploads/original/
-		shortPath := variant.ShortPath
-		if strings.HasPrefix(shortPath, "original/") {
-			shortPath = strings.TrimPrefix(shortPath, "original/")
-		}
+		shortPath := strings.TrimPrefix(variant.ShortPath, "original/")
 		imageURL = fmt.Sprintf("%s/uploads/original/%s", f.baseURL, shortPath)
 	} else {
 		// For other variants (medium, etc.), use the size directory
@@ -108,10 +105,7 @@ func (f *Fetcher) ConstructImageURL(variant *database.SizeVariant) string {
 	
 	if variant.Type == database.SizeVariantOriginal {
 		// For original variants, strip "original/" prefix and use /uploads/original/
-		shortPath := variant.ShortPath
-		if strings.HasPrefix(shortPath, "original/") {
-			shortPath = strings.TrimPrefix(shortPath, "original/")
-		}
+		shortPath := strings.TrimPrefix(variant.ShortPath, "original/")
 		return fmt.Sprintf("%s/uploads/original/%s", f.baseURL, shortPath)
 	} else if variant.Type == database.SizeVariantThumb && strings.HasPrefix(variant.ShortPath, "thumb/") {
 		// For thumbnails where short_path already includes "thumb/" prefix
