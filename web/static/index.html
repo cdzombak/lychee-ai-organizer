@@ -197,7 +197,7 @@
         }
 
         .action-button {
-            background-color: #4CAF50;
+            background-color: #2e7d32; /* Dark green */
             color: white;
             border: none;
             padding: 12px 20px;
@@ -208,30 +208,22 @@
         }
 
         .action-button:hover {
-            background-color: #45a049;
+            background-color: #1b5e20;
         }
 
         .action-button.secondary {
-            background-color: #2196F3;
+            background-color: #FF9800; /* Orange */
         }
 
         .action-button.secondary:hover {
-            background-color: #1976D2;
-        }
-
-        .action-button.tertiary {
-            background-color: #FF9800;
-        }
-
-        .action-button.tertiary:hover {
             background-color: #F57C00;
         }
 
-        .action-button.quaternary {
-            background-color: #9C27B0;
+        .action-button.tertiary {
+            background-color: #9C27B0; /* Purple */
         }
 
-        .action-button.quaternary:hover {
+        .action-button.tertiary:hover {
             background-color: #7B1FA2;
         }
 
@@ -670,19 +662,6 @@
             const startDescribeAllAlbums = () => startOperation('describe_all_albums');
             const startRetryAlbumFailures = () => startOperation('retry_album_failures');
 
-            const clearSuggestionsCache = () => {
-                const cacheSize = suggestionsCache.size;
-                setSuggestionsCache(new Map());
-                setLoadingStates(new Map());
-                setSuggestions([]); // Clear current suggestions
-                setSuggestionsLoading(false);
-                setToastMessage(`Suggestions cache cleared (${cacheSize} entries removed)`);
-                
-                // Reload suggestions for current photo if one is selected
-                if (currentPhoto) {
-                    loadSuggestions(currentPhoto.id);
-                }
-            };
 
             if (progress) {
                 const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
@@ -824,9 +803,6 @@
                         </button>
                         <button className="action-button tertiary" onClick={startRetryAlbumFailures}>
                             Retry Album Failures
-                        </button>
-                        <button className="action-button quaternary" onClick={clearSuggestionsCache}>
-                            Clear Cache
                         </button>
                     </div>
 
