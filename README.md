@@ -13,13 +13,6 @@ This application helps organize an existing [Lychee](https://github.com/LycheeOr
 - **Single Binary**: Self-contained executable with embedded web interface
 - **Album Management**: Blocklist and pinned-only filtering options
 
-## How It Works
-
-1. **Photo Analysis**: The system uses Ollama vision models to analyze photos and generate descriptive text
-2. **Album Synthesis**: Album descriptions are created by analyzing all photos within each album
-3. **Intelligent Matching**: When viewing an unsorted photo, the AI compares it against existing album descriptions to suggest the best matches
-4. **Continuous Learning**: As you organize photos, the system builds a better understanding of your album structure
-
 ## Configuration
 
 ### Prerequisites
