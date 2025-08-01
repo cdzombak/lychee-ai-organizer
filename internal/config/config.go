@@ -16,6 +16,12 @@ type Config struct {
 	Albums   AlbumsConfig   `json:"albums,omitempty"`
 }
 
+const (
+	TypeMySQL      = "mysql"
+	TypePostgreSQL = "postgresql"
+	TypeSQLite     = "sqlite"
+)
+
 type DatabaseConfig struct {
 	Type     string `json:"type"`
 	Host     string `json:"host"`
@@ -83,12 +89,12 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("database type is required (mysql, postgresql, or sqlite)")
 	}
 	
-	validTypes := map[string]bool{"mysql": true, "postgresql": true, "sqlite": true}
+	validTypes := map[string]bool{TypeMySQL: true, TypePostgreSQL: true, TypeSQLite: true}
 	if !validTypes[config.Database.Type] {
-		return fmt.Errorf("database type must be one of: mysql, postgresql, sqlite")
+		return fmt.Errorf("database type must be one of: %s, %s, %s", TypeMySQL, TypePostgreSQL, TypeSQLite)
 	}
 	
-	if config.Database.Type == "sqlite" {
+	if config.Database.Type == TypeSQLite {
 		if config.Database.Database == "" {
 			return fmt.Errorf("database path is required for SQLite")
 		}

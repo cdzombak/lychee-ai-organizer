@@ -25,15 +25,15 @@ func NewDB(cfg *config.DatabaseConfig, albumBlocklist []string, pinnedOnly bool)
 	var driverName string
 	
 	switch cfg.Type {
-	case "mysql":
+	case config.TypeMySQL:
 		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
 			cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 		driverName = "mysql"
-	case "postgresql":
+	case config.TypePostgreSQL:
 		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
 			cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 		driverName = "postgres"
-	case "sqlite":
+	case config.TypeSQLite:
 		dsn = fmt.Sprintf("file:%s?cache=shared&mode=rwc", cfg.Database)
 		driverName = "sqlite3"
 	default:
@@ -316,15 +316,15 @@ func (db *DB) GetPhotosInAlbum(albumID string) ([]Photo, error) {
 
 func (db *DB) MovePhotoToAlbum(photoID, albumID string) error {
 	switch db.dbType {
-	case "mysql":
+	case config.TypeMySQL:
 		query := `INSERT INTO photo_album (album_id, photo_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE album_id = ?`
 		_, err := db.conn.Exec(query, albumID, photoID, albumID)
 		return err
-	case "postgresql":
+	case config.TypePostgreSQL:
 		query := `INSERT INTO photo_album (album_id, photo_id) VALUES ($1, $2) ON CONFLICT (album_id, photo_id) DO UPDATE SET album_id = $1`
 		_, err := db.conn.Exec(query, albumID, photoID)
 		return err
-	case "sqlite":
+	case config.TypeSQLite:
 		query := `INSERT OR REPLACE INTO photo_album (album_id, photo_id) VALUES (?, ?)`
 		_, err := db.conn.Exec(query, albumID, photoID)
 		return err
