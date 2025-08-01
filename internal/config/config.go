@@ -16,7 +16,14 @@ type Config struct {
 	Albums   AlbumsConfig   `json:"albums,omitempty"`
 }
 
+const (
+	TypeMySQL      = "mysql"
+	TypePostgreSQL = "postgresql"
+	TypeSQLite     = "sqlite"
+)
+
 type DatabaseConfig struct {
+	Type     string `json:"type"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Username string `json:"username"`
@@ -78,17 +85,32 @@ func LoadConfig(configPath string) (*Config, error) {
 // validateConfig validates the configuration and returns an error if invalid
 func validateConfig(config *Config) error {
 	// Validate database config
-	if config.Database.Host == "" {
-		return fmt.Errorf("database host is required")
+	if config.Database.Type == "" {
+		return fmt.Errorf("database type is required (mysql, postgresql, or sqlite)")
 	}
-	if config.Database.Username == "" {
-		return fmt.Errorf("database username is required")
+	
+	validTypes := map[string]bool{TypeMySQL: true, TypePostgreSQL: true, TypeSQLite: true}
+	if !validTypes[config.Database.Type] {
+		return fmt.Errorf("database type must be one of: %s, %s, %s", TypeMySQL, TypePostgreSQL, TypeSQLite)
 	}
-	if config.Database.Database == "" {
-		return fmt.Errorf("database name is required")
-	}
-	if config.Database.Port <= 0 || config.Database.Port > 65535 {
-		return fmt.Errorf("database port must be between 1 and 65535")
+	
+	if config.Database.Type == TypeSQLite {
+		if config.Database.Database == "" {
+			return fmt.Errorf("database path is required for SQLite")
+		}
+	} else {
+		if config.Database.Host == "" {
+			return fmt.Errorf("database host is required")
+		}
+		if config.Database.Username == "" {
+			return fmt.Errorf("database username is required")
+		}
+		if config.Database.Database == "" {
+			return fmt.Errorf("database name is required")
+		}
+		if config.Database.Port <= 0 || config.Database.Port > 65535 {
+			return fmt.Errorf("database port must be between 1 and 65535")
+		}
 	}
 
 	// Validate Ollama config

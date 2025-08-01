@@ -17,7 +17,7 @@ This application helps organize an existing [Lychee](https://github.com/LycheeOr
 
 ### Prerequisites
 
-- **MySQL Database**: Running Lychee photo database
+- **Database**: Running Lychee photo database (MySQL, PostgreSQL, or SQLite)
 - **Ollama**: Local instance with required models
 - **Go**: Version 1.21+ for building
 
@@ -25,6 +25,7 @@ This application helps organize an existing [Lychee](https://github.com/LycheeOr
 
 Add AI description columns to your Lychee database:
 
+#### MySQL
 ```sql
 -- Add AI description columns to base_albums table
 ALTER TABLE `base_albums`
@@ -35,6 +36,36 @@ ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
 ALTER TABLE `photos`
 ADD COLUMN `_ai_description` TEXT DEFAULT NULL,
 ADD COLUMN `_ai_description_ts` TIMESTAMP NULL DEFAULT NULL;
+```
+
+#### PostgreSQL
+```sql
+-- Add AI description columns to base_albums table
+ALTER TABLE base_albums
+ADD COLUMN _ai_description TEXT DEFAULT NULL,
+ADD COLUMN _ai_description_ts TIMESTAMP DEFAULT NULL;
+
+-- Add AI description columns to photos table
+ALTER TABLE photos
+ADD COLUMN _ai_description TEXT DEFAULT NULL,
+ADD COLUMN _ai_description_ts TIMESTAMP DEFAULT NULL;
+```
+
+#### SQLite
+```sql
+-- Add AI description columns to base_albums table
+ALTER TABLE base_albums
+ADD COLUMN _ai_description TEXT DEFAULT NULL;
+
+ALTER TABLE base_albums
+ADD COLUMN _ai_description_ts DATETIME DEFAULT NULL;
+
+-- Add AI description columns to photos table
+ALTER TABLE photos
+ADD COLUMN _ai_description TEXT DEFAULT NULL;
+
+ALTER TABLE photos
+ADD COLUMN _ai_description_ts DATETIME DEFAULT NULL;
 ```
 
 ### Ollama Setup
@@ -54,14 +85,69 @@ ollama pull qwen3:8b          # For description synthesis
    ```
 
 2. Edit `config.json`:
+
+   **MySQL Configuration:**
    ```json
    {
      "database": {
+       "type": "mysql",
        "host": "localhost",
        "port": 3306,
        "username": "your_db_user",
        "password": "your_db_password",
        "database": "lychee"
+     },
+     "ollama": {
+       "endpoint": "http://localhost:11434",
+       "image_analysis_model": "qwen2.5vl:3b",
+       "description_synthesis_model": "qwen3:8b",
+       "context_window": 40960
+     },
+     "server": {
+       "host": "localhost",
+       "port": 8080
+     },
+     "albums": {
+       "blocklist": [],
+       "pinned_only": false
+     }
+   }
+   ```
+
+   **PostgreSQL Configuration:**
+   ```json
+   {
+     "database": {
+       "type": "postgresql",
+       "host": "localhost",
+       "port": 5432,
+       "username": "your_db_user",
+       "password": "your_db_password",
+       "database": "lychee"
+     },
+     "ollama": {
+       "endpoint": "http://localhost:11434",
+       "image_analysis_model": "qwen2.5vl:3b",
+       "description_synthesis_model": "qwen3:8b",
+       "context_window": 40960
+     },
+     "server": {
+       "host": "localhost",
+       "port": 8080
+     },
+     "albums": {
+       "blocklist": [],
+       "pinned_only": false
+     }
+   }
+   ```
+
+   **SQLite Configuration:**
+   ```json
+   {
+     "database": {
+       "type": "sqlite",
+       "database": "/path/to/lychee.db"
      },
      "ollama": {
        "endpoint": "http://localhost:11434",
@@ -135,8 +221,10 @@ ollama pull qwen3:8b          # For description synthesis
 ### Common Issues
 
 **Database Connection Failed**
-- Verify MySQL credentials and connectivity
+- Verify database credentials and connectivity
 - Ensure schema modifications are applied
+- For SQLite: Ensure the database file path is correct and writable
+- For PostgreSQL: Ensure the database exists and user has proper permissions
 
 **Ollama Connection Failed**
 - Check Ollama is running on specified endpoint
