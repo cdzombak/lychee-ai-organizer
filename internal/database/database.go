@@ -6,21 +6,41 @@ import (
 	"log"
 	"lychee-ai-organizer/internal/config"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type DB struct {
 	conn *sql.DB
+	dbType string
 	blocklist map[string]bool
 	pinnedOnly bool
 }
 
 func NewDB(cfg *config.DatabaseConfig, albumBlocklist []string, pinnedOnly bool) (*DB, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
+	var dsn string
+	var driverName string
 	
-	conn, err := sql.Open("mysql", dsn)
+	switch cfg.Type {
+	case "mysql":
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
+			cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
+		driverName = "mysql"
+	case "postgresql":
+		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+			cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
+		driverName = "postgres"
+	case "sqlite":
+		dsn = fmt.Sprintf("file:%s?cache=shared&mode=rwc", cfg.Database)
+		driverName = "sqlite3"
+	default:
+		return nil, fmt.Errorf("unsupported database type: %s", cfg.Type)
+	}
+	
+	conn, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +55,7 @@ func NewDB(cfg *config.DatabaseConfig, albumBlocklist []string, pinnedOnly bool)
 		blocklist[albumID] = true
 	}
 
-	return &DB{conn: conn, blocklist: blocklist, pinnedOnly: pinnedOnly}, nil
+	return &DB{conn: conn, dbType: cfg.Type, blocklist: blocklist, pinnedOnly: pinnedOnly}, nil
 }
 
 func (db *DB) Close() error {
@@ -246,17 +266,17 @@ func (db *DB) GetAlbumsWithoutAIDescription() ([]Album, error) {
 }
 
 func (db *DB) UpdatePhotoAIDescription(photoID, description string) error {
-	query := `UPDATE photos SET _ai_description = ?, _ai_description_ts = NOW() WHERE id = ?`
-	_, err := db.conn.Exec(query, description, photoID)
+	query := `UPDATE photos SET _ai_description = ?, _ai_description_ts = ? WHERE id = ?`
+	_, err := db.conn.Exec(query, description, time.Now(), photoID)
 	return err
 }
 
 func (db *DB) UpdateAlbumAIDescription(albumID, description string) error {
 	log.Printf("Updating AI description for album %s (description length: %d)", albumID, len(description))
-	query := `UPDATE base_albums SET _ai_description = ?, _ai_description_ts = NOW() WHERE id = ?`
+	query := `UPDATE base_albums SET _ai_description = ?, _ai_description_ts = ? WHERE id = ?`
 	
 	log.Printf("Executing UPDATE query for album %s", albumID)
-	result, err := db.conn.Exec(query, description, albumID)
+	result, err := db.conn.Exec(query, description, time.Now(), albumID)
 	if err != nil {
 		log.Printf("Failed to update album %s: %v", albumID, err)
 		return err
@@ -295,9 +315,22 @@ func (db *DB) GetPhotosInAlbum(albumID string) ([]Photo, error) {
 }
 
 func (db *DB) MovePhotoToAlbum(photoID, albumID string) error {
-	query := `INSERT INTO photo_album (album_id, photo_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE album_id = ?`
-	_, err := db.conn.Exec(query, albumID, photoID, albumID)
-	return err
+	switch db.dbType {
+	case "mysql":
+		query := `INSERT INTO photo_album (album_id, photo_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE album_id = ?`
+		_, err := db.conn.Exec(query, albumID, photoID, albumID)
+		return err
+	case "postgresql":
+		query := `INSERT INTO photo_album (album_id, photo_id) VALUES ($1, $2) ON CONFLICT (album_id, photo_id) DO UPDATE SET album_id = $1`
+		_, err := db.conn.Exec(query, albumID, photoID)
+		return err
+	case "sqlite":
+		query := `INSERT OR REPLACE INTO photo_album (album_id, photo_id) VALUES (?, ?)`
+		_, err := db.conn.Exec(query, albumID, photoID)
+		return err
+	default:
+		return fmt.Errorf("unsupported database type: %s", db.dbType)
+	}
 }
 
 func (db *DB) GetAllPhotosWithoutAIDescription() ([]Photo, error) {
