@@ -203,10 +203,8 @@ func (h *Handler) processAlbums(conn *websocket.Conn, albums []database.Album, s
 	log.Printf("Starting processAlbums with %d albums", len(albums))
 	for i, album := range albums {
 		currentIndex := startIndex + i + 1
-		log.Printf("Processing album %d/%d: %s (%s)", i+1, len(albums), album.ID, album.Title)
 		h.sendProgress(conn, stage, currentIndex, total, "Describing album: "+album.Title)
 
-		log.Printf("Fetching photos for album %s (%s)", album.ID, album.Title)
 		albumPhotos, err := h.db.GetPhotosInAlbum(album.ID)
 		if err != nil {
 			errorMsg := fmt.Sprintf("Album %s (%s): Failed to get photos: %v", album.ID, album.Title, err)
@@ -215,7 +213,6 @@ func (h *Handler) processAlbums(conn *websocket.Conn, albums []database.Album, s
 			continue
 		}
 
-		log.Printf("Retrieved %d photos for album %s (%s)", len(albumPhotos), album.ID, album.Title)
 		if len(albumPhotos) == 0 {
 			errorMsg := fmt.Sprintf("Album %s (%s): No photos found", album.ID, album.Title)
 			log.Printf("No photos found for album %s (%s)", album.ID, album.Title)
@@ -223,7 +220,6 @@ func (h *Handler) processAlbums(conn *websocket.Conn, albums []database.Album, s
 			continue
 		}
 
-		log.Printf("Generating description for album %s (%s) with %d photos", album.ID, album.Title, len(albumPhotos))
 		description, err := h.ollama.GenerateAlbumDescription(&album, albumPhotos)
 		if err != nil {
 			errorMsg := fmt.Sprintf("Album %s (%s): %v", album.ID, album.Title, err)
@@ -232,7 +228,6 @@ func (h *Handler) processAlbums(conn *websocket.Conn, albums []database.Album, s
 			continue
 		}
 
-		log.Printf("Successfully generated description for album %s (%s), saving to database", album.ID, album.Title)
 		if err := h.db.UpdateAlbumAIDescription(album.ID, description); err != nil {
 			errorMsg := fmt.Sprintf("Album %s (%s): Failed to save description: %v", album.ID, album.Title, err)
 			log.Printf("Error saving album description for %s: %v", album.ID, err)
@@ -240,7 +235,7 @@ func (h *Handler) processAlbums(conn *websocket.Conn, albums []database.Album, s
 			continue
 		}
 		
-		log.Printf("Successfully completed album %s (%s)", album.ID, album.Title)
+		log.Printf("Successfully processed album %s (%s)", album.ID, album.Title)
 	}
 
 	log.Printf("Completed processAlbums: %d errors out of %d albums", len(albumErrors), len(albums))

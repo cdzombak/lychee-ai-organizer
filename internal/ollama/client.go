@@ -318,7 +318,7 @@ Rules:
 		photoDate,
 		strings.Join(albumDescs, "\n"))
 
-	log.Printf("Album suggestion prompt for photo %s:\n%s", photo.ID, prompt)
+	log.Printf("Generating album suggestions for photo %s", photo.ID)
 
 	// Build options for the request
 	options := c.buildOllamaOptions()
@@ -342,11 +342,11 @@ Rules:
 		AlbumIDs []string `json:"album_ids"`
 	}
 
-	log.Printf("Album suggestion response for photo %s: %s", photo.ID, responseText)
-
 	if err := json.Unmarshal([]byte(responseText), &jsonResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON response: %w, response was: %s", err, responseText)
 	}
+
+	log.Printf("Generated %d album suggestions for photo %s", len(jsonResponse.AlbumIDs), photo.ID)
 
 	// Create a set of valid album IDs for validation
 	validAlbumIDs := make(map[string]bool)
@@ -536,6 +536,6 @@ Provide only the summary, no additional text.`,
 	// Remove <think> tags and their contents
 	compressed = removeThinkTags(compressed)
 
-	log.Printf("Successfully compressed batch %d for album %s (result: %s)", batchNumber, albumID, compressed)
+	log.Printf("Successfully compressed batch %d for album %s (%d chars)", batchNumber, albumID, len(compressed))
 	return compressed, nil
 }
