@@ -4,22 +4,12 @@ This application helps organize an existing [Lychee](https://github.com/LycheeOr
 
 ![screenshot](screenshot.png)
 
-## Features
-
-- **AI Photo Analysis**: Automatically generates descriptions for photos using vision models
-- **Smart Album Suggestions**: Recommends the best albums for each unsorted photo
-- **Album Intelligence**: Creates summaries for albums based on their content
-- **Real-time Progress**: Live updates during AI processing operations
-- **Single Binary**: Self-contained executable with embedded web interface
-- **Album Management**: Blocklist and pinned-only filtering options
-
 ## Configuration
 
 ### Prerequisites
 
 - **Database**: Running Lychee photo database (MySQL, PostgreSQL, or SQLite)
 - **Ollama**: Local instance with required models
-- **Go**: Version 1.21+ for building
 
 ### Database Setup
 
@@ -220,17 +210,6 @@ make build
 cp out/lychee-ai-organizer $INSTALL_DIR
 ```
 
-## Docker images
-
-Docker images are available for a variety of Linux architectures from [Docker Hub](https://hub.docker.com/r/cdzombak/lychee-ai-organizer) and [GHCR](https://github.com/cdzombak/lychee-ai-organizer/pkgs/container/lychee-ai-organizer). Images are based on the `scratch` image and are as small as possible.
-
-Run them via, for example:
-
-```shell
-docker run --rm -v /path/to/config.json:/config.json cdzombak/lychee-ai-organizer:1 -config /config.json
-docker run --rm -v /path/to/config.json:/config.json ghcr.io/cdzombak/lychee-ai-organizer:1 -config /config.json
-```
-
 ## Running
 
 1. **Run** (if installed via package manager):
@@ -244,6 +223,17 @@ docker run --rm -v /path/to/config.json:/config.json ghcr.io/cdzombak/lychee-ai-
    ```
 
 3. **Access**: Open `http://localhost:8080` in your browser
+
+### Docker images
+
+Docker images are available for a variety of Linux architectures from [Docker Hub](https://hub.docker.com/r/cdzombak/lychee-ai-organizer) and [GHCR](https://github.com/cdzombak/lychee-ai-organizer/pkgs/container/lychee-ai-organizer). Images are based on the `scratch` image and are as small as possible.
+
+Run them via, for example:
+
+```shell
+docker run --rm -v /path/to/config.json:/config.json cdzombak/lychee-ai-organizer:1 -config /config.json
+docker run --rm -v /path/to/config.json:/config.json ghcr.io/cdzombak/lychee-ai-organizer:1 -config /config.json
+```
 
 ## Usage
 
