@@ -1,0 +1,6 @@
+-s dir
+--name lychee-ai-organizer
+--description "Use local LLMs to organize your unsorted photos in Lychee"
+--url "https://github.com/cdzombak/lychee-ai-organizer"
+--maintainer "Chris Dzombak <https://www.dzombak.com>"
+--license GPL-3.0

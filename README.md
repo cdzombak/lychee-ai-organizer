@@ -178,16 +178,69 @@ ollama pull qwen3:8b          # For description synthesis
 - `top_p`: Top-p sampling (0.0-1.0)
 - `options`: Additional Ollama parameters
 
+## Installation
+
+### macOS via Homebrew
+
+```shell
+brew install cdzombak/oss/lychee-ai-organizer
+```
+
+### Debian via apt repository
+
+[Install my Debian repository](https://www.dzombak.com/blog/2025/06/updated-instructions-for-installing-my-debian-package-repositories/) if you haven't already:
+
+```shell
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://dist.cdzombak.net/keys/dist-cdzombak-net.gpg -o /etc/apt/keyrings/dist-cdzombak-net.gpg
+sudo chmod 644 /etc/apt/keyrings/dist-cdzombak-net.gpg
+sudo mkdir -p /etc/apt/sources.list.d
+sudo curl -fsSL https://dist.cdzombak.net/cdzombak-oss.sources -o /etc/apt/sources.list.d/cdzombak-oss.sources
+sudo chmod 644 /etc/apt/sources.list.d/cdzombak-oss.sources
+sudo apt update
+```
+
+Then install `lychee-ai-organizer` via `apt-get`:
+
+```shell
+sudo apt-get install lychee-ai-organizer
+```
+
+### Manual installation from build artifacts
+
+Pre-built binaries for Linux and macOS on various architectures are downloadable from each [GitHub Release](https://github.com/cdzombak/lychee-ai-organizer/releases). Debian packages for each release are available as well.
+
+### Build and install locally
+
+```shell
+git clone https://github.com/cdzombak/lychee-ai-organizer.git
+cd lychee-ai-organizer
+make build
+
+cp out/lychee-ai-organizer $INSTALL_DIR
+```
+
+## Docker images
+
+Docker images are available for a variety of Linux architectures from [Docker Hub](https://hub.docker.com/r/cdzombak/lychee-ai-organizer) and [GHCR](https://github.com/cdzombak/lychee-ai-organizer/pkgs/container/lychee-ai-organizer). Images are based on the `scratch` image and are as small as possible.
+
+Run them via, for example:
+
+```shell
+docker run --rm -v /path/to/config.json:/config.json cdzombak/lychee-ai-organizer:1 -config /config.json
+docker run --rm -v /path/to/config.json:/config.json ghcr.io/cdzombak/lychee-ai-organizer:1 -config /config.json
+```
+
 ## Running
 
-1. **Build**:
+1. **Run** (if installed via package manager):
    ```bash
-   go build -o lychee-ai-organizer
+   lychee-ai-organizer -config config.json
    ```
 
-2. **Run**:
+2. **Run** (if built locally):
    ```bash
-   ./lychee-ai-organizer -config config.json
+   ./out/lychee-ai-organizer -config config.json
    ```
 
 3. **Access**: Open `http://localhost:8080` in your browser

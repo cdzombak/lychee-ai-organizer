@@ -1,32 +1,356 @@
-name: Go
+---
+name: CI
 
-on:
+"on":
   push:
+    branches:
+      - "main"
+    tags:
+      - "v*.*.*"
   pull_request:
+    branches:
+      - "main"
+
+permissions:
+  contents: read
+
+env:
+  DOCKER_PLATFORMS: "linux/amd64,linux/arm64,linux/386,linux/arm/v7,linux/arm/v6"
+  FPM_VERSION: 1.15.1
 
 jobs:
-  build:
+  meta:
+    name: Derive Build Metadata
     runs-on: ubuntu-latest
-    name: Build + Lint
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
-        cache: true
-    - name: Build
-      run: go build -v ./...
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v8
-      with:
-        version: latest
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Derive version string
+        id: bin_version
+        run: echo "bin_version=$(./.version.sh)" >> "$GITHUB_OUTPUT"
+      - name: bin_version
+        run: "echo bin_version: ${{ steps.bin_version.outputs.bin_version }}"
+      - name: Check if this is a running version tag update
+        id: running_version_tag
+        run: |
+          if [ -z "${{ github.event.ref }}" ]; then
+              echo "is_running_version_tag_update=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event.ref }}" =~ ^refs/tags/v[0-9]+\.[0-9]+$ ]]; then
+              echo "is_running_version_tag_update=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event.ref }}" =~ ^refs/tags/v[0-9]+$ ]]; then
+              echo "is_running_version_tag_update=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "is_running_version_tag_update=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: is_running_version_tag
+        run: "echo is_running_version_tag_update: ${{ steps.running_version_tag.outputs.is_running_version_tag_update }}"
+    outputs:
+      bin_name: ${{ github.event.repository.name }}
+      bin_version: ${{ steps.bin_version.outputs.bin_version }}
+      dockerhub_owner: ${{ github.repository_owner }}
+      ghcr_owner: ${{ github.repository_owner }}
+      aptly_repo_name: oss
+      aptly_dist: any
+      aptly_publish_prefix: s3:dist.cdzombak.net:deb_oss
+      brewtap_owner: ${{ github.repository_owner }}
+      brewtap_name: oss
+      brewtap_formula_dir: formula
+      is_prerelease: >-
+        ${{
+          steps.running_version_tag.outputs.is_running_version_tag_update != 'true' &&
+          startsWith(github.ref, 'refs/tags/v') &&
+            (contains(github.ref, '-alpha.')
+            || contains(github.ref, '-beta.')
+            || contains(github.ref, '-rc.'))
+        }}
+      is_release: >-
+        ${{
+          steps.running_version_tag.outputs.is_running_version_tag_update != 'true' &&
+          startsWith(github.ref, 'refs/tags/v') &&
+            !(contains(github.ref, '-alpha.')
+            || contains(github.ref, '-beta.')
+            || contains(github.ref, '-rc.'))
+        }}
+      is_pull_request: ${{ github.event_name == 'pull_request' }}
+      is_running_version_tag_update: ${{ steps.running_version_tag.outputs.is_running_version_tag_update }}
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
 
   actionlint:
+    name: actionlint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Run actionlint
-      uses: raven-actions/actionlint@v2
-      with:
-        version: latest
+      - uses: actions/checkout@v4
+      - name: actionlint
+        uses: raven-actions/actionlint@v2
+
+  docker:
+    name: Docker Images
+    needs: [lint, meta]
+    if: needs.meta.outputs.is_running_version_tag_update != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        if: needs.meta.outputs.is_pull_request != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        if: needs.meta.outputs.is_pull_request != 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Available platforms
+        run: echo ${{ steps.buildx.outputs.platforms }}
+
+      - name: Docker meta
+        id: docker_meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ needs.meta.outputs.dockerhub_owner }}/${{ needs.meta.outputs.bin_name }}
+            ghcr.io/${{ needs.meta.outputs.ghcr_owner }}/${{ needs.meta.outputs.bin_name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.DOCKER_PLATFORMS }}
+          builder: ${{ steps.buildx.outputs.name }}
+          push: ${{ needs.meta.outputs.is_pull_request != 'true' }}
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
+          build-args: |
+            BIN_NAME=${{ needs.meta.outputs.bin_name }}
+            BIN_VERSION=${{ needs.meta.outputs.bin_version }}
+
+      - name: Update Docker Hub description
+        if: needs.meta.outputs.is_release == 'true'
+        uses: peter-evans/dockerhub-description@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ needs.meta.outputs.dockerhub_owner }}/${{ needs.meta.outputs.bin_name }}
+          readme-filepath: ./README.md
+          short-description: ${{ github.event.repository.description }}
+
+  binaries:
+    name: Binaries & Debian Packages
+    needs: [lint, meta]
+    if: needs.meta.outputs.is_running_version_tag_update != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Go version
+        run: go version
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+      - name: Ruby version
+        run: ruby --version
+      - name: Install fpm
+        run: |
+          gem install --no-document fpm -v "$FPM_VERSION"
+
+      - name: Build binaries & packages
+        run: make package
+      - name: Prepare release artifacts
+        working-directory: out/
+        run: |
+          mkdir ./gh-release
+          cp ./*.deb ./gh-release/
+          find . -name '${{ needs.meta.outputs.bin_name }}-*' -executable -type f -maxdepth 1 -print0 | xargs -0 -I {} tar --transform='flags=r;s|.*|${{ needs.meta.outputs.bin_name }}|' -czvf ./gh-release/{}.tar.gz {}
+      - name: Upload binaries & packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.meta.outputs.bin_name }} Binary Artifacts
+          path: out/gh-release/*
+
+  release:
+    name: GitHub (Pre)Release
+    needs: [meta, binaries]
+    if: >-
+      needs.meta.outputs.is_release == 'true' ||
+      needs.meta.outputs.is_prerelease == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download binaries & packages
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.meta.outputs.bin_name }} Binary Artifacts
+          path: out
+      - name: List artifacts
+        working-directory: out
+        run: ls -R
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/${{ needs.meta.outputs.bin_name }}-*
+          prerelease: ${{ needs.meta.outputs.is_prerelease == 'true' }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+
+  tags:
+    name: Update Release Tags
+    needs: [meta, release]
+    if: needs.meta.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Update running major/minor version tags
+        uses: sersoft-gmbh/running-release-tags-action@v3
+        with:
+          fail-on-non-semver-tag: true
+          create-release: false
+          update-full-release: false
+
+  aptly:
+    name: Aptly
+    needs: [meta, binaries]
+    if: needs.meta.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download binaries & packages
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.meta.outputs.bin_name }} Binary Artifacts
+          path: out
+      - name: List artifacts
+        run: ls -R
+        working-directory: out
+
+      - name: Login to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:github-actions
+
+      - name: Push to Aptly Repo
+        shell: bash
+        run: |
+          set -x
+          for DEB in out/*.deb; do
+            curl -u "${{ secrets.APTLY_CRED }}" \
+              -fsS -X POST \
+              -F file=@"${DEB}" \
+              "${{ secrets.APTLY_API }}/files/${{ needs.meta.outputs.bin_name }}-${{ needs.meta.outputs.bin_version }}"
+          done
+          curl -u "${{ secrets.APTLY_CRED }}" \
+            -fsS -X POST \
+            "${{ secrets.APTLY_API }}/repos/${{ needs.meta.outputs.aptly_repo_name }}/file/${{ needs.meta.outputs.bin_name }}-${{ needs.meta.outputs.bin_version }}?forceReplace=1"
+
+      - name: Update Published Aptly Repo
+        run: |
+          set -x
+          curl -u "${{ secrets.APTLY_CRED }}" \
+            -fsS -X PUT \
+            -H 'Content-Type: application/json' \
+            --data '{"ForceOverwrite": true}' \
+            "${{ secrets.APTLY_API }}/publish/${{ needs.meta.outputs.aptly_publish_prefix }}/${{ needs.meta.outputs.aptly_dist }}?_async=true"
+
+  homebrew:
+    name: Update Homebrew Tap
+    needs: [meta, binaries]
+    if: needs.meta.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release to ${{ needs.meta.outputs.brewtap_owner }}/${{ needs.meta.outputs.brewtap_name }} tap
+        uses: Justintime50/homebrew-releaser@v2
+        with:
+          homebrew_owner: ${{ needs.meta.outputs.brewtap_owner }}
+          homebrew_tap: homebrew-${{ needs.meta.outputs.brewtap_name }}
+          formula_folder: ${{ needs.meta.outputs.brewtap_formula_dir }}
+          update_readme_table: true
+          github_token: ${{ secrets.HOMEBREW_RELEASER_PAT }}
+          commit_owner: homebrew-releaser-bot
+          commit_email: homebrew-releaser-bot@users.noreply.github.com
+          target_darwin_amd64: true
+          target_darwin_arm64: true
+          target_linux_amd64: true
+          target_linux_arm64: true
+          version: v${{ needs.meta.outputs.bin_version }}
+          install: 'bin.install "${{ needs.meta.outputs.bin_name }}"'
+          test: 'assert_match("${{ needs.meta.outputs.bin_version }}", shell_output("#{bin}/${{ needs.meta.outputs.bin_name }} -version"))'
+
+  ntfy:
+    name: Ntfy
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    needs: [meta, lint, docker, binaries, release, aptly, homebrew]
+    steps:
+      - name: Send success notification
+        uses: niniyas/ntfy-action@master
+        if: ${{ !contains(needs.*.result, 'failure') && (needs.meta.outputs.is_release == 'true' || needs.meta.outputs.is_prerelease == 'true') }}
+        with:
+          url: "https://ntfy.cdzombak.net"
+          topic: "gha-builds"
+          priority: 3
+          headers: '{"authorization": "Bearer ${{ secrets.NTFY_TOKEN }}"}'
+          tags: white_check_mark
+          title: ${{ github.event.repository.name }} ${{ needs.meta.outputs.bin_version }} available
+          details: ${{ github.event.repository.name }} version ${{ needs.meta.outputs.bin_version }} is now available.
+      - name: Send failure notification
+        uses: niniyas/ntfy-action@master
+        if: ${{ contains(needs.*.result, 'failure') }}
+        with:
+          url: "https://ntfy.cdzombak.net"
+          topic: "gha-builds"
+          priority: 3
+          headers: '{"authorization": "Bearer ${{ secrets.NTFY_TOKEN }}"}'
+          tags: no_entry
+          title: ${{ github.event.repository.name }} ${{ needs.meta.outputs.bin_version }} build failed
+          details: Build failed for ${{ github.event.repository.name }} version ${{ needs.meta.outputs.bin_version }}.

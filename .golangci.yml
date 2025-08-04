@@ -7,3 +7,9 @@ linters:
       - linters:
           - errcheck
         text: "Error return value of `[\\w\\.]+\\.Close` is not checked"
+      - linters:
+          - errcheck
+        text: "Error return value of `rand.Read` is not checked"
+      - linters:
+          - staticcheck
+        text: "ST1005:"
