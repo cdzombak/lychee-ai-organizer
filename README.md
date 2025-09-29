@@ -1,6 +1,10 @@
 # AI-Powered Lychee Photo Organization Web Application
 
-This application helps organize an existing [Lychee](https://github.com/LycheeOrg/Lychee) photo library into albums using artificial intelligence. It connects to a [Lychee](https://github.com/LycheeOrg/Lychee) photo database and uses a local [Ollama](https://ollama.com) instance to generate descriptions for photos and albums, then provides intelligent suggestions for organizing unsorted photos.
+This application helps organize an existing [Lychee](https://github.com/LycheeOrg/Lychee) photo library into albums using artificial intelligence. It connects to a [Lychee](https://github.com/LycheeOrg/Lychee) photo database and uses AI to generate descriptions for photos and albums, then provides intelligent suggestions for organizing unsorted photos.
+
+The application supports two AI providers:
+- **Ollama**: Local, open-source AI models (recommended for privacy and cost)
+- **OpenAI-compatible APIs**: Including OpenAI, Azure OpenAI, and other compatible services
 
 ![screenshot](screenshot.png)
 
@@ -9,7 +13,9 @@ This application helps organize an existing [Lychee](https://github.com/LycheeOr
 ### Prerequisites
 
 - **Database**: Running Lychee photo database (MySQL, PostgreSQL, or SQLite)
-- **Ollama**: Local instance with required models
+- **AI Provider**: Either:
+  - **Ollama**: Local instance with required models (recommended), OR
+  - **OpenAI-compatible API**: API endpoint and key
 
 ### Database Setup
 
@@ -58,7 +64,9 @@ ALTER TABLE photos
 ADD COLUMN _ai_description_ts DATETIME DEFAULT NULL;
 ```
 
-### Ollama Setup
+### AI Provider Setup
+
+#### Option 1: Ollama (Recommended)
 
 Install Ollama and pull the recommended models:
 
@@ -66,6 +74,13 @@ Install Ollama and pull the recommended models:
 ollama pull qwen2.5vl:3b      # For image analysis
 ollama pull qwen3:8b          # For description synthesis
 ```
+
+#### Option 2: OpenAI-Compatible API
+
+You can use OpenAI, Azure OpenAI, or any OpenAI-compatible API service. You'll need:
+- API endpoint URL
+- API key
+- Model names (e.g., `gpt-4o` for vision, `gpt-4o-mini` for text)
 
 ### Application Configuration
 
@@ -76,7 +91,7 @@ ollama pull qwen3:8b          # For description synthesis
 
 2. Edit `config.json`:
 
-   **MySQL Configuration:**
+   **With Ollama (using MySQL database):**
    ```json
    {
      "database": {
@@ -87,7 +102,8 @@ ollama pull qwen3:8b          # For description synthesis
        "password": "your_db_password",
        "database": "lychee"
      },
-     "ollama": {
+     "ai": {
+       "provider": "ollama",
        "endpoint": "http://localhost:11434",
        "image_analysis_model": "qwen2.5vl:3b",
        "description_synthesis_model": "qwen3:8b",
@@ -97,6 +113,9 @@ ollama pull qwen3:8b          # For description synthesis
        "host": "localhost",
        "port": 8080
      },
+     "lychee": {
+       "base_url": "https://your-lychee-installation.com"
+     },
      "albums": {
        "blocklist": [],
        "pinned_only": false
@@ -104,7 +123,40 @@ ollama pull qwen3:8b          # For description synthesis
    }
    ```
 
-   **PostgreSQL Configuration:**
+   **With OpenAI (using MySQL database):**
+   ```json
+   {
+     "database": {
+       "type": "mysql",
+       "host": "localhost",
+       "port": 3306,
+       "username": "your_db_user",
+       "password": "your_db_password",
+       "database": "lychee"
+     },
+     "ai": {
+       "provider": "openai",
+       "endpoint": "https://api.openai.com",
+       "api_key": "your-api-key-here",
+       "image_analysis_model": "gpt-4o",
+       "description_synthesis_model": "gpt-4o-mini",
+       "temperature": 0.7
+     },
+     "server": {
+       "host": "localhost",
+       "port": 8080
+     },
+     "lychee": {
+       "base_url": "https://your-lychee-installation.com"
+     },
+     "albums": {
+       "blocklist": [],
+       "pinned_only": false
+     }
+   }
+   ```
+
+   **PostgreSQL Configuration Example:**
    ```json
    {
      "database": {
@@ -115,7 +167,8 @@ ollama pull qwen3:8b          # For description synthesis
        "password": "your_db_password",
        "database": "lychee"
      },
-     "ollama": {
+     "ai": {
+       "provider": "ollama",
        "endpoint": "http://localhost:11434",
        "image_analysis_model": "qwen2.5vl:3b",
        "description_synthesis_model": "qwen3:8b",
@@ -124,6 +177,9 @@ ollama pull qwen3:8b          # For description synthesis
      "server": {
        "host": "localhost",
        "port": 8080
+     },
+     "lychee": {
+       "base_url": "https://your-lychee-installation.com"
      },
      "albums": {
        "blocklist": [],
@@ -132,14 +188,15 @@ ollama pull qwen3:8b          # For description synthesis
    }
    ```
 
-   **SQLite Configuration:**
+   **SQLite Configuration Example:**
    ```json
    {
      "database": {
        "type": "sqlite",
        "database": "/path/to/lychee.db"
      },
-     "ollama": {
+     "ai": {
+       "provider": "ollama",
        "endpoint": "http://localhost:11434",
        "image_analysis_model": "qwen2.5vl:3b",
        "description_synthesis_model": "qwen3:8b",
@@ -148,6 +205,9 @@ ollama pull qwen3:8b          # For description synthesis
      "server": {
        "host": "localhost",
        "port": 8080
+     },
+     "lychee": {
+       "base_url": "https://your-lychee-installation.com"
      },
      "albums": {
        "blocklist": [],
@@ -161,12 +221,26 @@ ollama pull qwen3:8b          # For description synthesis
 - **Blocklist**: Exclude specific album IDs from AI processing and suggestions
 - **Pinned Only**: Restrict suggestions to pinned albums only (`is_pinned = true`)
 
-#### Ollama Performance Options
+#### AI Configuration Options
 
+**Common to all providers:**
+- `provider`: Either `"ollama"` or `"openai"`
+- `endpoint`: API endpoint URL
+- `image_analysis_model`: Model name for analyzing images
+- `description_synthesis_model`: Model name for generating text descriptions
+- `temperature`: Sampling temperature (0.0-1.0, optional)
+- `top_p`: Top-p sampling (0.0-1.0, optional)
+
+**Ollama-specific:**
 - `context_window`: Maximum context length (recommended for `qwen3:8b`: 40960)
-- `temperature`: Sampling temperature (0.0-1.0)
-- `top_p`: Top-p sampling (0.0-1.0)
 - `options`: Additional Ollama parameters
+
+**OpenAI-specific:**
+- `api_key`: Your API key (required)
+
+#### Legacy Configuration
+
+The old `"ollama"` configuration format is still supported for backward compatibility, but the new `"ai"` format is recommended.
 
 ## Installation
 

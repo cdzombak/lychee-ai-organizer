@@ -7,14 +7,14 @@ import (
 	"net/http"
 	"strconv"
 
+	"lychee-ai-organizer/internal/ai"
 	"lychee-ai-organizer/internal/database"
 	"lychee-ai-organizer/internal/images"
-	"lychee-ai-organizer/internal/ollama"
 )
 
 type Server struct {
 	db           *database.DB
-	ollama       *ollama.Client
+	aiProvider   ai.Provider
 	imageFetcher *images.Fetcher
 	mux          *http.ServeMux
 }
@@ -43,10 +43,10 @@ type MovePhotoRequest struct {
 	AlbumID string `json:"album_id"`
 }
 
-func NewServer(db *database.DB, ollamaClient *ollama.Client, imageFetcher *images.Fetcher) *Server {
+func NewServer(db *database.DB, aiProvider ai.Provider, imageFetcher *images.Fetcher) *Server {
 	s := &Server{
 		db:           db,
-		ollama:       ollamaClient,
+		aiProvider:   aiProvider,
 		imageFetcher: imageFetcher,
 		mux:          http.NewServeMux(),
 	}
@@ -179,7 +179,7 @@ func (s *Server) handlePhotoSuggestions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	log.Printf("Generating suggestions for photo: %s", photoID)
-	suggestions, err := s.ollama.GenerateAlbumSuggestions(targetPhoto, albums)
+	suggestions, err := s.aiProvider.GenerateAlbumSuggestions(targetPhoto, albums)
 	if err != nil {
 		log.Printf("Error generating suggestions: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

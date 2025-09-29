@@ -10,7 +10,8 @@ import (
 
 type Config struct {
 	Database DatabaseConfig `json:"database"`
-	Ollama   OllamaConfig   `json:"ollama"`
+	AI       AIConfig       `json:"ai,omitempty"`
+	Ollama   OllamaConfig   `json:"ollama,omitempty"`
 	Server   ServerConfig   `json:"server"`
 	Lychee   LycheeConfig   `json:"lychee"`
 	Albums   AlbumsConfig   `json:"albums,omitempty"`
@@ -29,6 +30,18 @@ type DatabaseConfig struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Database string `json:"database"`
+}
+
+type AIConfig struct {
+	Provider                  string                 `json:"provider"` // "ollama" or "openai"
+	Endpoint                  string                 `json:"endpoint"`
+	APIKey                    string                 `json:"api_key,omitempty"`
+	ImageAnalysisModel        string                 `json:"image_analysis_model"`
+	DescriptionSynthesisModel string                 `json:"description_synthesis_model"`
+	ContextWindow             int                    `json:"context_window,omitempty"`
+	Temperature               float64                `json:"temperature,omitempty"`
+	TopP                      float64                `json:"top_p,omitempty"`
+	Options                   map[string]interface{} `json:"options,omitempty"`
 }
 
 type OllamaConfig struct {
@@ -113,18 +126,50 @@ func validateConfig(config *Config) error {
 		}
 	}
 
-	// Validate Ollama config
-	if config.Ollama.Endpoint == "" {
-		return fmt.Errorf("ollama endpoint is required")
+	// Validate AI config - support both new AI config and legacy Ollama config
+	hasAIConfig := config.AI.Endpoint != ""
+	hasOllamaConfig := config.Ollama.Endpoint != ""
+
+	if !hasAIConfig && !hasOllamaConfig {
+		return fmt.Errorf("either 'ai' or 'ollama' configuration is required")
 	}
-	if _, err := url.Parse(config.Ollama.Endpoint); err != nil {
-		return fmt.Errorf("invalid ollama endpoint URL: %w", err)
+
+	if hasAIConfig && hasOllamaConfig {
+		return fmt.Errorf("cannot specify both 'ai' and 'ollama' configuration; use only 'ai'")
 	}
-	if config.Ollama.ImageAnalysisModel == "" {
-		return fmt.Errorf("ollama image analysis model is required")
-	}
-	if config.Ollama.DescriptionSynthesisModel == "" {
-		return fmt.Errorf("ollama description synthesis model is required")
+
+	if hasAIConfig {
+		// Validate new AI config
+		if config.AI.Provider == "" {
+			return fmt.Errorf("ai.provider is required (ollama or openai)")
+		}
+		validProviders := map[string]bool{"ollama": true, "openai": true}
+		if !validProviders[config.AI.Provider] {
+			return fmt.Errorf("ai.provider must be either 'ollama' or 'openai'")
+		}
+		if _, err := url.Parse(config.AI.Endpoint); err != nil {
+			return fmt.Errorf("invalid ai.endpoint URL: %w", err)
+		}
+		if config.AI.ImageAnalysisModel == "" {
+			return fmt.Errorf("ai.image_analysis_model is required")
+		}
+		if config.AI.DescriptionSynthesisModel == "" {
+			return fmt.Errorf("ai.description_synthesis_model is required")
+		}
+		if config.AI.Provider == "openai" && config.AI.APIKey == "" {
+			return fmt.Errorf("ai.api_key is required when using openai provider")
+		}
+	} else {
+		// Validate legacy Ollama config for backward compatibility
+		if _, err := url.Parse(config.Ollama.Endpoint); err != nil {
+			return fmt.Errorf("invalid ollama endpoint URL: %w", err)
+		}
+		if config.Ollama.ImageAnalysisModel == "" {
+			return fmt.Errorf("ollama image analysis model is required")
+		}
+		if config.Ollama.DescriptionSynthesisModel == "" {
+			return fmt.Errorf("ollama description synthesis model is required")
+		}
 	}
 
 	// Validate Lychee config

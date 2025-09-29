@@ -7,7 +7,8 @@
     "password": "your_password_here",
     "database": "lychee"
   },
-  "ollama": {
+  "ai": {
+    "provider": "ollama",
     "endpoint": "http://localhost:11434",
     "image_analysis_model": "llava:7b",
     "description_synthesis_model": "llama3.1:8b",
@@ -23,5 +24,14 @@
   "albums": {
     "blocklist": ["album-id-1", "album-id-2"],
     "pinned_only": false
+  },
+  "_comment_openai": "To use OpenAI-compatible API instead, replace the 'ai' section with:",
+  "_comment_openai_example": {
+    "provider": "openai",
+    "endpoint": "https://api.openai.com",
+    "api_key": "your-api-key-here",
+    "image_analysis_model": "gpt-4o",
+    "description_synthesis_model": "gpt-4o-mini",
+    "temperature": 0.7
   }
 }
