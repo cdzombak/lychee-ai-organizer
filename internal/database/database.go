@@ -288,13 +288,17 @@ func (db *DB) UpdateAlbumAIDescription(albumID, description string) error {
 }
 
 func (db *DB) GetPhotosInAlbum(albumID string) ([]Photo, error) {
+	// Prefix all column names with "p." since we're using an alias
+	columns := photoSelectColumns()
+	prefixedColumns := "p." + strings.ReplaceAll(columns, ", ", ", p.")
+
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM photos p
 		INNER JOIN photo_album pa ON p.id = pa.photo_id
 		WHERE pa.album_id = ?
 		ORDER BY p.taken_at DESC, p.created_at DESC`,
-		strings.ReplaceAll(photoSelectColumns(), "id,", "p.id,"))
+		prefixedColumns)
 
 	rows, err := db.conn.Query(query, albumID)
 	if err != nil {
