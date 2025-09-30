@@ -32,24 +32,21 @@ func (f *Fetcher) GetImageBytes(variant *database.SizeVariant) ([]byte, string, 
 	// - Original variants: "original/bc/76/cf76569f88279d64fc47b12a96db.jpg"
 
 	var imageURL string
-	if variant.Type == database.SizeVariantOriginal {
+	switch variant.Type {
+	case database.SizeVariantOriginal:
 		// For original variants, strip "original/" prefix and use /uploads/original/
 		shortPath := strings.TrimPrefix(variant.ShortPath, "original/")
 		imageURL = fmt.Sprintf("%s/uploads/original/%s", f.baseURL, shortPath)
-	} else if variant.Type == database.SizeVariantMedium {
+	case database.SizeVariantMedium:
 		// For medium variants, strip "medium/" prefix and use /uploads/medium/
 		shortPath := strings.TrimPrefix(variant.ShortPath, "medium/")
 		imageURL = fmt.Sprintf("%s/uploads/medium/%s", f.baseURL, shortPath)
-	} else {
-		// For other variants (thumb, etc.), use the size directory
-		var sizeDir string
-		switch variant.Type {
-		case database.SizeVariantThumb:
-			sizeDir = "thumb"
-		default:
-			sizeDir = "medium" // Default fallback
-		}
-		imageURL = fmt.Sprintf("%s/uploads/%s/%s", f.baseURL, sizeDir, variant.ShortPath)
+	case database.SizeVariantThumb:
+		// For thumb variants, use the thumb directory
+		imageURL = fmt.Sprintf("%s/uploads/thumb/%s", f.baseURL, variant.ShortPath)
+	default:
+		// Default fallback
+		imageURL = fmt.Sprintf("%s/uploads/medium/%s", f.baseURL, variant.ShortPath)
 	}
 
 	log.Printf("Fetching image from URL: %s (variant type: %d, short_path: %s)", imageURL, variant.Type, variant.ShortPath)
@@ -107,28 +104,23 @@ func (f *Fetcher) ConstructImageURL(variant *database.SizeVariant) string {
 	// - Thumbnail variants: "thumb/72/9f/6ac4c28108f1b276a8cc45e99141.jpeg"
 	// - Original variants: "original/bc/76/cf76569f88279d64fc47b12a96db.jpg"
 
-	if variant.Type == database.SizeVariantOriginal {
+	switch variant.Type {
+	case database.SizeVariantOriginal:
 		// For original variants, strip "original/" prefix and use /uploads/original/
 		shortPath := strings.TrimPrefix(variant.ShortPath, "original/")
 		return fmt.Sprintf("%s/uploads/original/%s", f.baseURL, shortPath)
-	} else if variant.Type == database.SizeVariantMedium {
+	case database.SizeVariantMedium:
 		// For medium variants, strip "medium/" prefix and use /uploads/medium/
 		shortPath := strings.TrimPrefix(variant.ShortPath, "medium/")
 		return fmt.Sprintf("%s/uploads/medium/%s", f.baseURL, shortPath)
-	} else if variant.Type == database.SizeVariantThumb && strings.HasPrefix(variant.ShortPath, "thumb/") {
-		// For thumbnails where short_path already includes "thumb/" prefix
-		return fmt.Sprintf("%s/uploads/%s", f.baseURL, variant.ShortPath)
-	} else {
-		// For other variants, use the size directory
-		var sizeDir string
-		switch variant.Type {
-		case database.SizeVariantMedium:
-			sizeDir = "medium"
-		case database.SizeVariantThumb: // Thumbnail type
-			sizeDir = "thumb"
-		default:
-			sizeDir = "medium" // Default fallback
+	case database.SizeVariantThumb:
+		// For thumbnails where short_path may include "thumb/" prefix
+		if strings.HasPrefix(variant.ShortPath, "thumb/") {
+			return fmt.Sprintf("%s/uploads/%s", f.baseURL, variant.ShortPath)
 		}
-		return fmt.Sprintf("%s/uploads/%s/%s", f.baseURL, sizeDir, variant.ShortPath)
+		return fmt.Sprintf("%s/uploads/thumb/%s", f.baseURL, variant.ShortPath)
+	default:
+		// Default fallback
+		return fmt.Sprintf("%s/uploads/medium/%s", f.baseURL, variant.ShortPath)
 	}
 }
