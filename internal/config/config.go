@@ -41,6 +41,7 @@ type AIConfig struct {
 	ContextWindow             int                    `json:"context_window,omitempty"`
 	Temperature               float64                `json:"temperature,omitempty"`
 	TopP                      float64                `json:"top_p,omitempty"`
+	BatchSize                 int                    `json:"batch_size,omitempty"` // Number of photo descriptions to process before compaction (default: 30)
 	Options                   map[string]interface{} `json:"options,omitempty"`
 }
 
@@ -51,6 +52,7 @@ type OllamaConfig struct {
 	ContextWindow             int                    `json:"context_window,omitempty"`
 	Temperature               float64                `json:"temperature,omitempty"`
 	TopP                      float64                `json:"top_p,omitempty"`
+	BatchSize                 int                    `json:"batch_size,omitempty"` // Number of photo descriptions to process before compaction (default: 30)
 	Options                   map[string]interface{} `json:"options,omitempty"`
 }
 

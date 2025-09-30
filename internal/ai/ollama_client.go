@@ -27,6 +27,13 @@ type OllamaClient struct {
 	config       *config.OllamaConfig
 }
 
+func (c *OllamaClient) getBatchSize() int {
+	if c.config.BatchSize > 0 {
+		return c.config.BatchSize
+	}
+	return defaultBatchSize
+}
+
 func NewOllamaClient(cfg *config.OllamaConfig, db *database.DB, imageFetcher *images.Fetcher) (*OllamaClient, error) {
 	baseURL, err := url.Parse(cfg.Endpoint)
 	if err != nil {
@@ -172,9 +179,10 @@ func (c *OllamaClient) GenerateAlbumDescription(album *database.Album, photos []
 	}
 
 	// Apply hierarchical compaction if needed
+	batchSize := c.getBatchSize()
 	compactedDescriptions := photoDescriptions
-	if len(photoDescriptions) > maxDescriptionsBeforeCompaction {
-		log.Printf("Album %s has %d descriptions, applying compaction", album.ID, len(photoDescriptions))
+	if len(photoDescriptions) > batchSize {
+		log.Printf("Album %s has %d descriptions, applying compaction (batch size: %d)", album.ID, len(photoDescriptions), batchSize)
 		compactedDescriptions, err = c.compactDescriptionsHierarchically(album.ID, photoDescriptions)
 		if err != nil {
 			return "", fmt.Errorf("failed to compact descriptions: %w", err)
@@ -317,16 +325,18 @@ Rules:
 
 // compactDescriptionsHierarchically applies recursive batch compression to reduce descriptions to manageable size
 func (c *OllamaClient) compactDescriptionsHierarchically(albumID string, descriptions []string) ([]string, error) {
-	if len(descriptions) <= maxDescriptionsBeforeCompaction {
+	batchSize := c.getBatchSize()
+
+	if len(descriptions) <= batchSize {
 		return descriptions, nil
 	}
 
-	log.Printf("Starting hierarchical compaction for album %s with %d descriptions", albumID, len(descriptions))
+	log.Printf("Starting hierarchical compaction for album %s with %d descriptions (batch size: %d)", albumID, len(descriptions), batchSize)
 
 	// Create batches of descriptions
 	batches := make([][]string, 0)
-	for i := 0; i < len(descriptions); i += maxDescriptionsBeforeCompaction {
-		end := i + maxDescriptionsBeforeCompaction
+	for i := 0; i < len(descriptions); i += batchSize {
+		end := i + batchSize
 		if end > len(descriptions) {
 			end = len(descriptions)
 		}
@@ -350,7 +360,7 @@ func (c *OllamaClient) compactDescriptionsHierarchically(albumID string, descrip
 	}
 
 	// If we still have too many compressed batches, recursively compress them
-	if len(compressedBatches) > maxDescriptionsBeforeCompaction {
+	if len(compressedBatches) > batchSize {
 		log.Printf("Still have %d compressed batches for album %s, applying another level of compaction", len(compressedBatches), albumID)
 		return c.compactDescriptionsHierarchically(albumID, compressedBatches)
 	}
