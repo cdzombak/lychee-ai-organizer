@@ -12,7 +12,8 @@
     "endpoint": "http://localhost:11434",
     "image_analysis_model": "llava:7b",
     "description_synthesis_model": "llama3.1:8b",
-    "context_window": 8192
+    "context_window": 8192,
+    "batch_size": 30
   },
   "server": {
     "host": "localhost",
@@ -32,6 +33,7 @@
     "api_key": "your-api-key-here",
     "image_analysis_model": "gpt-4o",
     "description_synthesis_model": "gpt-4o-mini",
-    "temperature": 0.7
+    "temperature": 0.7,
+    "batch_size": 30
   }
 }
