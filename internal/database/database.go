@@ -288,13 +288,17 @@ func (db *DB) UpdateAlbumAIDescription(albumID, description string) error {
 }
 
 func (db *DB) GetPhotosInAlbum(albumID string) ([]Photo, error) {
+	// Prefix all column names with "p." since we're using an alias
+	columns := photoSelectColumns()
+	prefixedColumns := "p." + strings.ReplaceAll(columns, ", ", ", p.")
+
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM photos p
 		INNER JOIN photo_album pa ON p.id = pa.photo_id
 		WHERE pa.album_id = ?
 		ORDER BY p.taken_at DESC, p.created_at DESC`,
-		strings.ReplaceAll(photoSelectColumns(), "id,", "p.id,"))
+		prefixedColumns)
 
 	rows, err := db.conn.Query(query, albumID)
 	if err != nil {
@@ -387,9 +391,9 @@ func (db *DB) GetPhotoSizeVariant(photoID string) (*SizeVariant, error) {
 	// First try to get Medium variant (type 2), fallback to Original (type 0)
 	query := `
 		SELECT id, photo_id, type, short_path, width, height, ratio, filesize, storage_disk
-		FROM size_variants 
+		FROM size_variants
 		WHERE photo_id = ? AND type IN (?, ?)
-		ORDER BY type ASC
+		ORDER BY type DESC
 		LIMIT 1`
 
 	row := db.conn.QueryRow(query, photoID, SizeVariantMedium, SizeVariantOriginal)

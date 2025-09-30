@@ -36,12 +36,16 @@ func (f *Fetcher) GetImageBytes(variant *database.SizeVariant) ([]byte, string, 
 		// For original variants, strip "original/" prefix and use /uploads/original/
 		shortPath := strings.TrimPrefix(variant.ShortPath, "original/")
 		imageURL = fmt.Sprintf("%s/uploads/original/%s", f.baseURL, shortPath)
+	} else if variant.Type == database.SizeVariantMedium {
+		// For medium variants, strip "medium/" prefix and use /uploads/medium/
+		shortPath := strings.TrimPrefix(variant.ShortPath, "medium/")
+		imageURL = fmt.Sprintf("%s/uploads/medium/%s", f.baseURL, shortPath)
 	} else {
-		// For other variants (medium, etc.), use the size directory
+		// For other variants (thumb, etc.), use the size directory
 		var sizeDir string
 		switch variant.Type {
-		case database.SizeVariantMedium:
-			sizeDir = "medium"
+		case database.SizeVariantThumb:
+			sizeDir = "thumb"
 		default:
 			sizeDir = "medium" // Default fallback
 		}
@@ -107,11 +111,12 @@ func (f *Fetcher) ConstructImageURL(variant *database.SizeVariant) string {
 		// For original variants, strip "original/" prefix and use /uploads/original/
 		shortPath := strings.TrimPrefix(variant.ShortPath, "original/")
 		return fmt.Sprintf("%s/uploads/original/%s", f.baseURL, shortPath)
+	} else if variant.Type == database.SizeVariantMedium {
+		// For medium variants, strip "medium/" prefix and use /uploads/medium/
+		shortPath := strings.TrimPrefix(variant.ShortPath, "medium/")
+		return fmt.Sprintf("%s/uploads/medium/%s", f.baseURL, shortPath)
 	} else if variant.Type == database.SizeVariantThumb && strings.HasPrefix(variant.ShortPath, "thumb/") {
 		// For thumbnails where short_path already includes "thumb/" prefix
-		return fmt.Sprintf("%s/uploads/%s", f.baseURL, variant.ShortPath)
-	} else if variant.Type == database.SizeVariantMedium && strings.HasPrefix(variant.ShortPath, "medium/") {
-		// For medium variants where short_path already includes "medium/" prefix
 		return fmt.Sprintf("%s/uploads/%s", f.baseURL, variant.ShortPath)
 	} else {
 		// For other variants, use the size directory

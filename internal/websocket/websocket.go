@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"lychee-ai-organizer/internal/ai"
 	"lychee-ai-organizer/internal/database"
-	"lychee-ai-organizer/internal/ollama"
 )
 
 var upgrader = websocket.Upgrader{
@@ -35,14 +35,14 @@ type ErrorSummary struct {
 }
 
 type Handler struct {
-	db     *database.DB
-	ollama *ollama.Client
+	db         *database.DB
+	aiProvider ai.Provider
 }
 
-func NewHandler(db *database.DB, ollamaClient *ollama.Client) *Handler {
+func NewHandler(db *database.DB, aiProvider ai.Provider) *Handler {
 	return &Handler{
-		db:     db,
-		ollama: ollamaClient,
+		db:         db,
+		aiProvider: aiProvider,
 	}
 }
 
@@ -102,7 +102,7 @@ func (h *Handler) handleRescan(conn *websocket.Conn) {
 		current++
 		h.sendProgress(conn, "photos", current, totalWork, "Processing photo: "+photo.Title)
 
-		description, err := h.ollama.GeneratePhotoDescription(&photo)
+		description, err := h.aiProvider.GeneratePhotoDescription(&photo)
 		if err != nil {
 			log.Printf("Error generating photo description for %s: %v", photo.ID, err)
 			continue
@@ -129,7 +129,7 @@ func (h *Handler) handleRescan(conn *websocket.Conn) {
 			continue
 		}
 
-		description, err := h.ollama.GenerateAlbumDescription(&album, albumPhotos)
+		description, err := h.aiProvider.GenerateAlbumDescription(&album, albumPhotos)
 		if err != nil {
 			log.Printf("Error generating album description for %s: %v", album.ID, err)
 			continue
@@ -177,7 +177,7 @@ func (h *Handler) processPhotos(conn *websocket.Conn, photos []database.Photo, s
 	for i, photo := range photos {
 		h.sendProgress(conn, stage, i+1, total, "Processing photo: "+photo.Title)
 
-		description, err := h.ollama.GeneratePhotoDescription(&photo)
+		description, err := h.aiProvider.GeneratePhotoDescription(&photo)
 		if err != nil {
 			errorMsg := fmt.Sprintf("Photo %s (%s): %v", photo.ID, photo.Title, err)
 			log.Printf("Error generating photo description for %s: %v", photo.ID, err)
@@ -220,7 +220,7 @@ func (h *Handler) processAlbums(conn *websocket.Conn, albums []database.Album, s
 			continue
 		}
 
-		description, err := h.ollama.GenerateAlbumDescription(&album, albumPhotos)
+		description, err := h.aiProvider.GenerateAlbumDescription(&album, albumPhotos)
 		if err != nil {
 			errorMsg := fmt.Sprintf("Album %s (%s): %v", album.ID, album.Title, err)
 			log.Printf("Error generating album description for %s: %v", album.ID, err)

@@ -6,11 +6,11 @@ import (
 	"log"
 	"net/http"
 
+	"lychee-ai-organizer/internal/ai"
 	"lychee-ai-organizer/internal/api"
 	"lychee-ai-organizer/internal/config"
 	"lychee-ai-organizer/internal/database"
 	"lychee-ai-organizer/internal/images"
-	"lychee-ai-organizer/internal/ollama"
 	"lychee-ai-organizer/internal/websocket"
 )
 
@@ -21,7 +21,7 @@ type App struct {
 	config     *config.Config
 	configPath string
 	db         *database.DB
-	ollama     *ollama.Client
+	aiProvider ai.Provider
 	apiServer  *api.Server
 	wsHandler  *websocket.Handler
 }
@@ -51,18 +51,18 @@ func (app *App) Run() error {
 	// Initialize image fetcher
 	imageFetcher := images.NewFetcher(&cfg.Lychee)
 
-	// Initialize Ollama client
-	ollamaClient, err := ollama.NewClient(&cfg.Ollama, db, imageFetcher)
+	// Initialize AI provider
+	aiProvider, err := ai.NewProvider(cfg, db, imageFetcher)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Ollama client: %w", err)
+		return fmt.Errorf("failed to initialize AI provider: %w", err)
 	}
-	app.ollama = ollamaClient
+	app.aiProvider = aiProvider
 
 	// Initialize API server
-	app.apiServer = api.NewServer(db, ollamaClient, imageFetcher)
+	app.apiServer = api.NewServer(db, aiProvider, imageFetcher)
 
 	// Initialize WebSocket handler
-	app.wsHandler = websocket.NewHandler(db, ollamaClient)
+	app.wsHandler = websocket.NewHandler(db, aiProvider)
 
 	// Set up HTTP routes
 	http.HandleFunc("/", app.handleIndex)
