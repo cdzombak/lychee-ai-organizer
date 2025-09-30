@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	// maxDescriptionsBeforeCompaction is the threshold for applying hierarchical compaction
-	maxDescriptionsBeforeCompaction = 30
+	// defaultBatchSize is the default threshold for applying hierarchical compaction
+	defaultBatchSize = 30
 	// retryAttempts is the number of times to retry failed API calls
 	retryAttempts = 3
 )
@@ -152,7 +152,6 @@ Provide only the description, no additional text.`,
 				Content: contentParts,
 			},
 		},
-		MaxTokens: 500,
 	}
 
 	if c.config.Temperature > 0 {
@@ -186,9 +185,10 @@ func (c *OpenAIClient) GenerateAlbumDescription(album *database.Album, photos []
 	}
 
 	// Apply hierarchical compaction if needed
+	batchSize := c.getBatchSize()
 	compactedDescriptions := photoDescriptions
-	if len(photoDescriptions) > maxDescriptionsBeforeCompaction {
-		log.Printf("Album %s has %d descriptions, applying compaction", album.ID, len(photoDescriptions))
+	if len(photoDescriptions) > batchSize {
+		log.Printf("Album %s has %d descriptions, applying compaction (batch size: %d)", album.ID, len(photoDescriptions), batchSize)
 		compactedDescriptions, err = c.compactDescriptionsHierarchically(album.ID, photoDescriptions)
 		if err != nil {
 			return "", fmt.Errorf("failed to compact descriptions: %w", err)
@@ -206,7 +206,6 @@ func (c *OpenAIClient) GenerateAlbumDescription(album *database.Album, photos []
 				Content: prompt,
 			},
 		},
-		MaxTokens: 500,
 	}
 
 	if c.config.Temperature > 0 {
@@ -300,7 +299,6 @@ Rules:
 				Content: prompt,
 			},
 		},
-		MaxTokens: 200,
 	}
 
 	if c.config.Temperature > 0 {
@@ -392,24 +390,49 @@ func (c *OpenAIClient) sendChatRequest(req *openAIChatRequest) (string, error) {
 		return "", fmt.Errorf("failed to unmarshal response: %w, body: %s", err, string(respBody))
 	}
 
+	log.Printf("OpenAI API response: choices=%d, model=%s, finish_reason=%s",
+		len(chatResp.Choices),
+		chatResp.Model,
+		func() string {
+			if len(chatResp.Choices) > 0 {
+				return chatResp.Choices[0].FinishReason
+			}
+			return "N/A"
+		}())
+
 	if len(chatResp.Choices) == 0 {
 		return "", fmt.Errorf("no choices in response")
 	}
 
-	return chatResp.Choices[0].Message.Content, nil
+	content := chatResp.Choices[0].Message.Content
+	if content == "" {
+		return "", fmt.Errorf("empty content in response, finish_reason: %s, response body: %s",
+			chatResp.Choices[0].FinishReason, string(respBody))
+	}
+
+	return content, nil
+}
+
+func (c *OpenAIClient) getBatchSize() int {
+	if c.config.BatchSize > 0 {
+		return c.config.BatchSize
+	}
+	return defaultBatchSize
 }
 
 func (c *OpenAIClient) compactDescriptionsHierarchically(albumID string, descriptions []string) ([]string, error) {
-	if len(descriptions) <= maxDescriptionsBeforeCompaction {
+	batchSize := c.getBatchSize()
+
+	if len(descriptions) <= batchSize {
 		return descriptions, nil
 	}
 
-	log.Printf("Starting hierarchical compaction for album %s with %d descriptions", albumID, len(descriptions))
+	log.Printf("Starting hierarchical compaction for album %s with %d descriptions (batch size: %d)", albumID, len(descriptions), batchSize)
 
 	// Create batches of descriptions
 	batches := make([][]string, 0)
-	for i := 0; i < len(descriptions); i += maxDescriptionsBeforeCompaction {
-		end := i + maxDescriptionsBeforeCompaction
+	for i := 0; i < len(descriptions); i += batchSize {
+		end := i + batchSize
 		if end > len(descriptions) {
 			end = len(descriptions)
 		}
@@ -433,7 +456,7 @@ func (c *OpenAIClient) compactDescriptionsHierarchically(albumID string, descrip
 	}
 
 	// If we still have too many compressed batches, recursively compress them
-	if len(compressedBatches) > maxDescriptionsBeforeCompaction {
+	if len(compressedBatches) > batchSize {
 		log.Printf("Still have %d compressed batches for album %s, applying another level of compaction", len(compressedBatches), albumID)
 		return c.compactDescriptionsHierarchically(albumID, compressedBatches)
 	}
@@ -469,7 +492,6 @@ Provide only the summary, no additional text.`,
 				Content: prompt,
 			},
 		},
-		MaxTokens: 500,
 	}
 
 	if c.config.Temperature > 0 {
