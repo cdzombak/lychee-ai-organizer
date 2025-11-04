@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
+	"sync/atomic"
 
 	"github.com/gorilla/websocket"
 	"lychee-ai-organizer/internal/ai"
@@ -35,14 +37,20 @@ type ErrorSummary struct {
 }
 
 type Handler struct {
-	db         *database.DB
-	aiProvider ai.Provider
+	db                    *database.DB
+	aiProvider            ai.Provider
+	maxConcurrentRequests int
+	sendMu                sync.Mutex
 }
 
-func NewHandler(db *database.DB, aiProvider ai.Provider) *Handler {
+func NewHandler(db *database.DB, aiProvider ai.Provider, maxConcurrentRequests int) *Handler {
+	if maxConcurrentRequests <= 0 {
+		maxConcurrentRequests = 4
+	}
 	return &Handler{
-		db:         db,
-		aiProvider: aiProvider,
+		db:                    db,
+		aiProvider:            aiProvider,
+		maxConcurrentRequests: maxConcurrentRequests,
 	}
 }
 
@@ -95,50 +103,14 @@ func (h *Handler) handleRescan(conn *websocket.Conn) {
 		return
 	}
 
-	current := 0
-
-	// Process photos
-	for _, photo := range photos {
-		current++
-		h.sendProgress(conn, "photos", current, totalWork, "Processing photo: "+photo.Title)
-
-		description, err := h.aiProvider.GeneratePhotoDescription(&photo)
-		if err != nil {
-			log.Printf("Error generating photo description for %s: %v", photo.ID, err)
-			continue
-		}
-
-		if err := h.db.UpdatePhotoAIDescription(photo.ID, description); err != nil {
-			log.Printf("Error saving photo description for %s: %v", photo.ID, err)
-			continue
-		}
+	photoErrors := h.processPhotos(conn, photos, "photos", 0, totalWork)
+	if len(photoErrors) > 0 {
+		log.Printf("Rescan photo stage completed with %d errors", len(photoErrors))
 	}
 
-	// Process albums (regenerate all album descriptions)
-	for _, album := range albums {
-		current++
-		h.sendProgress(conn, "albums", current, totalWork, "Regenerating album description: "+album.ID)
-
-		albumPhotos, err := h.db.GetPhotosInAlbum(album.ID)
-		if err != nil {
-			log.Printf("Error getting photos for album %s: %v", album.ID, err)
-			continue
-		}
-
-		if len(albumPhotos) == 0 {
-			continue
-		}
-
-		description, err := h.aiProvider.GenerateAlbumDescription(&album, albumPhotos)
-		if err != nil {
-			log.Printf("Error generating album description for %s: %v", album.ID, err)
-			continue
-		}
-
-		if err := h.db.UpdateAlbumAIDescription(album.ID, description); err != nil {
-			log.Printf("Error saving album description for %s: %v", album.ID, err)
-			continue
-		}
+	albumErrors := h.processAlbums(conn, albums, "albums", len(photos), totalWork)
+	if len(albumErrors) > 0 {
+		log.Printf("Rescan album stage completed with %d errors", len(albumErrors))
 	}
 
 	h.sendMessage(conn, "complete", map[string]string{"message": "Rescan complete"})
@@ -155,6 +127,8 @@ func (h *Handler) sendProgress(conn *websocket.Conn, stage string, current, tota
 }
 
 func (h *Handler) sendMessage(conn *websocket.Conn, msgType string, payload interface{}) {
+	h.sendMu.Lock()
+	defer h.sendMu.Unlock()
 	msg := Message{
 		Type:    msgType,
 		Payload: payload,
@@ -169,75 +143,140 @@ func (h *Handler) sendError(conn *websocket.Conn, errorMsg string) {
 	h.sendMessage(conn, "error", map[string]string{"error": errorMsg})
 }
 
-// processPhotos is a helper function to reduce code duplication in photo processing
-func (h *Handler) processPhotos(conn *websocket.Conn, photos []database.Photo, stage string) []string {
-	var photoErrors []string
-	total := len(photos)
-
-	for i, photo := range photos {
-		h.sendProgress(conn, stage, i+1, total, "Processing photo: "+photo.Title)
-
-		description, err := h.aiProvider.GeneratePhotoDescription(&photo)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Photo %s (%s): %v", photo.ID, photo.Title, err)
-			log.Printf("Error generating photo description for %s: %v", photo.ID, err)
-			photoErrors = append(photoErrors, errorMsg)
-			continue
-		}
-
-		if err := h.db.UpdatePhotoAIDescription(photo.ID, description); err != nil {
-			errorMsg := fmt.Sprintf("Photo %s (%s): Failed to save description: %v", photo.ID, photo.Title, err)
-			log.Printf("Error saving photo description for %s: %v", photo.ID, err)
-			photoErrors = append(photoErrors, errorMsg)
-			continue
-		}
+// processPhotos processes photo descriptions using a bounded worker pool so multiple
+// LLM requests can run in parallel.
+func (h *Handler) processPhotos(conn *websocket.Conn, photos []database.Photo, stage string, startIndex int, total int) []string {
+	if len(photos) == 0 {
+		return nil
 	}
+	if total == 0 {
+		total = len(photos)
+	}
+	workers := h.maxConcurrentRequests
+	if workers <= 0 {
+		workers = 1
+	}
+	var (
+		photoErrors []string
+		errMu       sync.Mutex
+		sem         = make(chan struct{}, workers)
+		wg          sync.WaitGroup
+		progress    atomic.Int32
+	)
+
+	for _, photo := range photos {
+		photo := photo
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			current := startIndex + int(progress.Add(1))
+			h.sendProgress(conn, stage, current, total, "Processing photo: "+photo.Title)
+
+			description, err := h.aiProvider.GeneratePhotoDescription(&photo)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Photo %s (%s): %v", photo.ID, photo.Title, err)
+				log.Printf("Error generating photo description for %s: %v", photo.ID, err)
+				errMu.Lock()
+				photoErrors = append(photoErrors, errorMsg)
+				errMu.Unlock()
+				return
+			}
+
+			if err := h.db.UpdatePhotoAIDescription(photo.ID, description); err != nil {
+				errorMsg := fmt.Sprintf("Photo %s (%s): Failed to save description: %v", photo.ID, photo.Title, err)
+				log.Printf("Error saving photo description for %s: %v", photo.ID, err)
+				errMu.Lock()
+				photoErrors = append(photoErrors, errorMsg)
+				errMu.Unlock()
+				return
+			}
+		}()
+	}
+
+	wg.Wait()
 
 	return photoErrors
 }
 
-// processAlbums is a helper function to reduce code duplication in album processing
+// processAlbums mirrors processPhotos but works on album descriptions with the same
+// concurrency controls.
 func (h *Handler) processAlbums(conn *websocket.Conn, albums []database.Album, stage string, startIndex int, total int) []string {
-	var albumErrors []string
+	if len(albums) == 0 {
+		return nil
+	}
+	if total == 0 {
+		total = startIndex + len(albums)
+	}
+	workers := h.maxConcurrentRequests
+	if workers <= 0 {
+		workers = 1
+	}
+	var (
+		albumErrors []string
+		errMu       sync.Mutex
+		sem         = make(chan struct{}, workers)
+		wg          sync.WaitGroup
+		progress    atomic.Int32
+	)
 
-	log.Printf("Starting processAlbums with %d albums", len(albums))
-	for i, album := range albums {
-		currentIndex := startIndex + i + 1
-		h.sendProgress(conn, stage, currentIndex, total, "Describing album: "+album.Title)
+	log.Printf("Starting processAlbums with %d albums (workers=%d)", len(albums), workers)
+	for _, album := range albums {
+		album := album
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		albumPhotos, err := h.db.GetPhotosInAlbum(album.ID)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): Failed to get photos: %v", album.ID, album.Title, err)
-			log.Printf("Error getting photos for album %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
+			currentIndex := startIndex + int(progress.Add(1))
+			h.sendProgress(conn, stage, currentIndex, total, "Describing album: "+album.Title)
 
-		if len(albumPhotos) == 0 {
-			errorMsg := fmt.Sprintf("Album %s (%s): No photos found", album.ID, album.Title)
-			log.Printf("No photos found for album %s (%s)", album.ID, album.Title)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
+			albumPhotos, err := h.db.GetPhotosInAlbum(album.ID)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Album %s (%s): Failed to get photos: %v", album.ID, album.Title, err)
+				log.Printf("Error getting photos for album %s: %v", album.ID, err)
+				errMu.Lock()
+				albumErrors = append(albumErrors, errorMsg)
+				errMu.Unlock()
+				return
+			}
 
-		description, err := h.aiProvider.GenerateAlbumDescription(&album, albumPhotos)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): %v", album.ID, album.Title, err)
-			log.Printf("Error generating album description for %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
+			if len(albumPhotos) == 0 {
+				errorMsg := fmt.Sprintf("Album %s (%s): No photos found", album.ID, album.Title)
+				log.Printf("No photos found for album %s (%s)", album.ID, album.Title)
+				errMu.Lock()
+				albumErrors = append(albumErrors, errorMsg)
+				errMu.Unlock()
+				return
+			}
 
-		if err := h.db.UpdateAlbumAIDescription(album.ID, description); err != nil {
-			errorMsg := fmt.Sprintf("Album %s (%s): Failed to save description: %v", album.ID, album.Title, err)
-			log.Printf("Error saving album description for %s: %v", album.ID, err)
-			albumErrors = append(albumErrors, errorMsg)
-			continue
-		}
+			description, err := h.aiProvider.GenerateAlbumDescription(&album, albumPhotos)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Album %s (%s): %v", album.ID, album.Title, err)
+				log.Printf("Error generating album description for %s: %v", album.ID, err)
+				errMu.Lock()
+				albumErrors = append(albumErrors, errorMsg)
+				errMu.Unlock()
+				return
+			}
 
-		log.Printf("Successfully processed album %s (%s)", album.ID, album.Title)
+			if err := h.db.UpdateAlbumAIDescription(album.ID, description); err != nil {
+				errorMsg := fmt.Sprintf("Album %s (%s): Failed to save description: %v", album.ID, album.Title, err)
+				log.Printf("Error saving album description for %s: %v", album.ID, err)
+				errMu.Lock()
+				albumErrors = append(albumErrors, errorMsg)
+				errMu.Unlock()
+				return
+			}
+
+			log.Printf("Successfully processed album %s (%s)", album.ID, album.Title)
+		}()
 	}
 
+	wg.Wait()
 	log.Printf("Completed processAlbums: %d errors out of %d albums", len(albumErrors), len(albums))
 	return albumErrors
 }
@@ -258,7 +297,7 @@ func (h *Handler) handleDescribePhotos(conn *websocket.Conn) {
 		return
 	}
 
-	photoErrors := h.processPhotos(conn, photos, "photos")
+	photoErrors := h.processPhotos(conn, photos, "photos", 0, len(photos))
 
 	errorSummary := ErrorSummary{
 		PhotoErrors: photoErrors,

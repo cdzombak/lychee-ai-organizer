@@ -149,12 +149,14 @@ You can use OpenAI, Azure OpenAI, or any OpenAI-compatible API service. You'll n
      "lychee": {
        "base_url": "https://your-lychee-installation.com"
      },
-     "albums": {
-       "blocklist": [],
-       "pinned_only": false
-     }
+   "albums": {
+     "blocklist": [],
+     "pinned_only": false
    }
-   ```
+  }
+  ```
+
+   Set `max_concurrent_requests` inside the `ai` block to control how many photo/album descriptions are generated in parallel (defaults to 4). Increase it only if your AI provider and database can comfortably handle the additional load.
 
    **PostgreSQL Configuration Example:**
    ```json

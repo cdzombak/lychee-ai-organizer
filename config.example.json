@@ -12,6 +12,7 @@
     "endpoint": "http://localhost:11434",
     "image_analysis_model": "llava:7b",
     "description_synthesis_model": "llama3.1:8b",
+    "max_concurrent_requests": 4,
     "context_window": 8192,
     "batch_size": 30
   },

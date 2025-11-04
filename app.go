@@ -62,7 +62,7 @@ func (app *App) Run() error {
 	app.apiServer = api.NewServer(db, aiProvider, imageFetcher)
 
 	// Initialize WebSocket handler
-	app.wsHandler = websocket.NewHandler(db, aiProvider)
+	app.wsHandler = websocket.NewHandler(db, aiProvider, cfg.MaxConcurrentRequests())
 
 	// Set up HTTP routes
 	http.HandleFunc("/", app.handleIndex)

@@ -18,9 +18,10 @@ type Config struct {
 }
 
 const (
-	TypeMySQL      = "mysql"
-	TypePostgreSQL = "postgresql"
-	TypeSQLite     = "sqlite"
+	TypeMySQL                    = "mysql"
+	TypePostgreSQL               = "postgresql"
+	TypeSQLite                   = "sqlite"
+	defaultMaxConcurrentRequests = 4
 )
 
 type DatabaseConfig struct {
@@ -41,6 +42,7 @@ type AIConfig struct {
 	ContextWindow             int                    `json:"context_window,omitempty"`
 	Temperature               float64                `json:"temperature,omitempty"`
 	TopP                      float64                `json:"top_p,omitempty"`
+	MaxConcurrentRequests     int                    `json:"max_concurrent_requests,omitempty"`
 	BatchSize                 int                    `json:"batch_size,omitempty"` // Number of photo descriptions to process before compaction (default: 30)
 	Options                   map[string]interface{} `json:"options,omitempty"`
 }
@@ -52,6 +54,7 @@ type OllamaConfig struct {
 	ContextWindow             int                    `json:"context_window,omitempty"`
 	Temperature               float64                `json:"temperature,omitempty"`
 	TopP                      float64                `json:"top_p,omitempty"`
+	MaxConcurrentRequests     int                    `json:"max_concurrent_requests,omitempty"`
 	BatchSize                 int                    `json:"batch_size,omitempty"` // Number of photo descriptions to process before compaction (default: 30)
 	Options                   map[string]interface{} `json:"options,omitempty"`
 }
@@ -145,6 +148,9 @@ func validateConfig(config *Config) error {
 		if config.AI.Provider == "" {
 			return fmt.Errorf("ai.provider is required (ollama or openai)")
 		}
+		if config.AI.MaxConcurrentRequests < 0 {
+			return fmt.Errorf("ai.max_concurrent_requests must be zero or positive")
+		}
 		validProviders := map[string]bool{"ollama": true, "openai": true}
 		if !validProviders[config.AI.Provider] {
 			return fmt.Errorf("ai.provider must be either 'ollama' or 'openai'")
@@ -163,6 +169,9 @@ func validateConfig(config *Config) error {
 		}
 	} else {
 		// Validate legacy Ollama config for backward compatibility
+		if config.Ollama.MaxConcurrentRequests < 0 {
+			return fmt.Errorf("ollama.max_concurrent_requests must be zero or positive")
+		}
 		if _, err := url.Parse(config.Ollama.Endpoint); err != nil {
 			return fmt.Errorf("invalid ollama endpoint URL: %w", err)
 		}
@@ -190,4 +199,23 @@ func validateConfig(config *Config) error {
 	}
 
 	return nil
+}
+
+// MaxConcurrentRequests returns the configured maximum number of concurrent LLM calls,
+// defaulting to a safe value when unset.
+func (config *Config) MaxConcurrentRequests() int {
+	if config == nil {
+		return defaultMaxConcurrentRequests
+	}
+	if config.AI.Endpoint != "" {
+		if config.AI.MaxConcurrentRequests > 0 {
+			return config.AI.MaxConcurrentRequests
+		}
+	}
+	if config.Ollama.Endpoint != "" {
+		if config.Ollama.MaxConcurrentRequests > 0 {
+			return config.Ollama.MaxConcurrentRequests
+		}
+	}
+	return defaultMaxConcurrentRequests
 }
