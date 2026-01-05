@@ -9,7 +9,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.10.9
-	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/ollama/ollama v0.1.48
 )
 
