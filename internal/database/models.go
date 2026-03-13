@@ -10,11 +10,10 @@ type Photo struct {
 	CreatedAt              time.Time       `db:"created_at"`
 	UpdatedAt              time.Time       `db:"updated_at"`
 	OwnerID                int             `db:"owner_id"`
-	OldAlbumID             sql.NullString  `db:"old_album_id"`
 	Title                  string          `db:"title"`
 	Description            sql.NullString  `db:"description"`
 	License                string          `db:"license"`
-	IsStarred              bool            `db:"is_starred"`
+	IsHighlighted          bool            `db:"is_highlighted"`
 	ISO                    sql.NullString  `db:"iso"`
 	Make                   sql.NullString  `db:"make"`
 	Model                  sql.NullString  `db:"model"`
