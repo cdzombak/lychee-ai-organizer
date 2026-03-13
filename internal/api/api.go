@@ -388,7 +388,7 @@ func (s *Server) selectBestVariantURL(variants []database.SizeVariant, isThumb b
 	var selectedVariant *database.SizeVariant
 
 	if isThumb {
-		// For thumbnails, prefer thumb (6) > medium (2) > original (0)
+		// For thumbnails, prefer thumb (7) > medium (3) > original (1)
 		for _, v := range variants {
 			if v.Type == database.SizeVariantThumb { // Thumb
 				selectedVariant = &v
@@ -412,7 +412,7 @@ func (s *Server) selectBestVariantURL(variants []database.SizeVariant, isThumb b
 			}
 		}
 	} else {
-		// For full size, prefer medium (2) > original (0)
+		// For full size, prefer medium (3) > original (1)
 		for _, v := range variants {
 			if v.Type == database.SizeVariantMedium { // Medium
 				selectedVariant = &v

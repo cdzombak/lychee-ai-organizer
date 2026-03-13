@@ -16,7 +16,7 @@ The application will be a self-contained Golang binary with an embedded React si
     *   The description will be a maximum of three sentences.
     *   It will focus on the photo's subject matter, photographic style, unique characteristics, and overall mood.
     *   The photo's capture date will be included in the description.
-    *   **Image Processing:** The application fetches the actual image file from the Lychee installation using the `size_variants` table. It prioritizes Medium size variants (type 2) and falls back to Original variants (type 0) if Medium is unavailable. The image is downloaded from the Lychee base URL and sent as binary data to the vision model.
+    *   **Image Processing:** The application fetches the actual image file from the Lychee installation using the `size_variants` table. It prioritizes Medium size variants (type 3) and falls back to Original variants (type 1) if Medium is unavailable. The image is downloaded from the Lychee base URL and sent as binary data to the vision model.
 *   **Album Description Generation:** For each top-level photo album without an AI-generated description, the application will generate a one-paragraph summary.
     *   This summary will be synthesized from the descriptions of all the photos contained within that album.
     *   The summary will also include a synopsis of the capture dates of the photos in the album.
@@ -211,7 +211,7 @@ This table stores multiple size variants for each photo, which the application u
 CREATE TABLE `size_variants` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `photo_id` char(24) NOT NULL,
-  `type` int(10) unsigned NOT NULL DEFAULT 0 COMMENT '0: original, 2: medium, 6: thumb',
+  `type` int(10) unsigned NOT NULL DEFAULT 0 COMMENT '0: raw, 1: original, 2: medium2x, 3: medium, 4: small2x, 5: small, 6: thumb2x, 7: thumb, 8: placeholder',
   `short_path` varchar(255) NOT NULL,
   `width` int(11) NOT NULL,
   `height` int(11) NOT NULL,
@@ -225,7 +225,7 @@ CREATE TABLE `size_variants` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 ```
 
-The application queries this table to find appropriate image variants for AI analysis, preferring Medium variants (type=2) over Original variants (type=0).
+The application queries this table to find appropriate image variants for AI analysis, preferring Medium variants (type=3) over Original variants (type=1).
 
 #### 5.6. Schema Modifications
 

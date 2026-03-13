@@ -70,7 +70,7 @@ type PhotoAlbum struct {
 type SizeVariant struct {
 	ID          int64   `db:"id"`
 	PhotoID     string  `db:"photo_id"`
-	Type        int     `db:"type"` // 0: original, ..., 6: thumb
+	Type        int     `db:"type"` // See SizeVariant* constants
 	ShortPath   string  `db:"short_path"`
 	Width       int     `db:"width"`
 	Height      int     `db:"height"`
@@ -79,8 +79,16 @@ type SizeVariant struct {
 	StorageDisk string  `db:"storage_disk"`
 }
 
+// Size variant types, aligned with Lychee's SizeVariantType enum.
+// See https://github.com/LycheeOrg/Lychee/blob/master/app/Enum/SizeVariantType.php
 const (
-	SizeVariantOriginal = 0
-	SizeVariantMedium   = 2 // Medium size variant
-	SizeVariantThumb    = 6 // Thumbnail size variant
+	SizeVariantRaw         = 0
+	SizeVariantOriginal    = 1
+	SizeVariantMedium2x    = 2
+	SizeVariantMedium      = 3
+	SizeVariantSmall2x     = 4
+	SizeVariantSmall       = 5
+	SizeVariantThumb2x     = 6
+	SizeVariantThumb       = 7
+	SizeVariantPlaceholder = 8
 )

@@ -388,7 +388,7 @@ func (db *DB) GetAllPhotosWithoutAIDescription() ([]Photo, error) {
 }
 
 func (db *DB) GetPhotoSizeVariant(photoID string) (*SizeVariant, error) {
-	// First try to get Medium variant (type 2), fallback to Original (type 0)
+	// First try to get Medium variant (type 3), fallback to Original (type 1)
 	query := `
 		SELECT id, photo_id, type, short_path, width, height, ratio, filesize, storage_disk
 		FROM size_variants
